@@ -1,15 +1,19 @@
 package com.prezi.services.demo
 
+import akka.actor.typed.ActorRef
 import akka.actor.typed.scaladsl.adapter._
 import akka.actor.{ActorSystem, typed}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
 import akka.stream.{ActorMaterializer, Materializer}
 import cats.instances.string._
+import com.prezi.services.demo.actors.TestActor
 import com.prezi.services.demo.api.Api
 import com.prezi.services.demo.core.Context._
+import com.prezi.services.demo.core.Interop._
 import com.prezi.services.demo.core.{AkkaContext, Context, Interop}
 import com.prezi.services.demo.dependencies.{CatsDep, FutureDep, PureDep, ZioDep}
+import com.prezi.services.demo.model.Answer
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
@@ -21,6 +25,7 @@ import zio.random.Random
 import zio.system.System
 
 import scala.concurrent.duration._
+import scala.util.Try
 
 object Main extends CatsApp {
   private val terminateDeadline: FiniteDuration = 10.seconds
@@ -32,7 +37,7 @@ object Main extends CatsApp {
 
   private def toStage1(stage0: Environment, actorSystem: typed.ActorSystem[_], materializer: Materializer): EnvStage1 =
     PureDep.withPureDep[Environment with AkkaContext](
-      Context.withAkkaContext[Environment](
+      withAkkaContext[Environment](
         stage0, actorSystem, materializer))
 
   // Final application environment
@@ -52,7 +57,14 @@ object Main extends CatsApp {
         stageFinal {
           for {
             interop <- createInterop()
-            api <- createHttpApi(interop)
+            actor <- createActor(interop)
+
+            // Demonstrating ask-ing an actor from ZIO
+            testAnswer <- actor.ask[FinalEnvironment, Try[Answer]](TestActor.Question(100, _), 1.second)
+            _ <- console.putStrLn(s"Actor answered with: $testAnswer")
+
+            // Launching the akka-http server
+            api <- createHttpApi(interop, actor)
             httpServer <- startHttpApi(api)
             _ <- httpServer.useForever
           } yield ()
@@ -95,7 +107,8 @@ object Main extends CatsApp {
       Interop.create(Runtime(env, runtime.Platform))
     }
 
-  private def createHttpApi(interopImpl: Interop[FinalEnvironment]): ZIO[FinalEnvironment, Nothing, Api] = {
+  private def createHttpApi(interopImpl: Interop[FinalEnvironment],
+                            testActor: ActorRef[TestActor.Message]): ZIO[FinalEnvironment, Nothing, Api] = {
     for {
       env <- ZIO.environment
     } yield new Api {
@@ -103,6 +116,8 @@ object Main extends CatsApp {
       override val zioDep: ZioDep.Service = env.zioDep
       override val futureDep: FutureDep.Service = env.futureDep
       override val catsDep: CatsDep.Service = env.catsDep
+      override val actor: ActorRef[TestActor.Message] = testActor
+      override val actorSystem: typed.ActorSystem[_] = env.actorSystem
     }
   }
 
@@ -141,6 +156,12 @@ object Main extends CatsApp {
         .catchAll(logFatalError)
     }
   }
+
+  private def createActor(implicit interop: Interop[Main.FinalEnvironment]): ZIO[FinalEnvironment, Throwable, ActorRef[TestActor.Message]] =
+    for {
+      system <- actorSystem
+      actor <- system.spawn(TestActor.create(), "test-actor")
+    } yield actor
 
   private def logFatalError(reason: Throwable): ZIO[Console, Nothing, Unit] =
     console.putStrLn(s"Fatal init/shutdown error: ${reason.getMessage}") // TODO: use logging system instead
