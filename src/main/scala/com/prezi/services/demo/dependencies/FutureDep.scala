@@ -1,8 +1,10 @@
 package com.prezi.services.demo.dependencies
 
 import com.prezi.services.demo.Main
+import com.prezi.services.demo.core.AkkaContext
 import com.prezi.services.demo.model.Answer
 import zio.ZIO
+import zio.delegate._
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -15,16 +17,19 @@ object FutureDep {
     def provideAnswer(input: Int): Future[Answer]
   }
 
-  def create(): ZIO[Main.EnvStage1, Nothing, Service] = {
-    for {
-      pureDep <- ZIO.environment[Main.EnvStage1].map(_.pureDep)
-      executionContext <- ZIO.environment[Main.EnvStage1].map(_.actorSystem.executionContext)
-    } yield new Service {
+  trait Live extends FutureDep {
+    this: PureDep with AkkaContext =>
+
+    override val futureDep: Service = new Service {
       override def provideAnswer(input: Int): Future[Answer] = {
-        implicit val ec: ExecutionContext = executionContext
+        implicit val ec: ExecutionContext = actorSystem.executionContext
         Future(pureDep.toAnswer(input))
       }
     }
   }
 
+  def withFutureDep[A <: PureDep with AkkaContext](a: A)(implicit ev: A Mix FutureDep): A with FutureDep = {
+    class Instance(@delegate underlying: PureDep with AkkaContext) extends Live
+    ev.mix(a, new Instance(a))
+  }
 }

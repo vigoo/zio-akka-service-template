@@ -8,13 +8,14 @@ import akka.stream.{ActorMaterializer, Materializer}
 import cats.instances.string._
 import com.prezi.services.demo.api.Api
 import com.prezi.services.demo.core.Context._
-import com.prezi.services.demo.core.{AkkaContext, Interop}
+import com.prezi.services.demo.core.{AkkaContext, Context, Interop}
 import com.prezi.services.demo.dependencies.{CatsDep, FutureDep, PureDep, ZioDep}
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.console
 import zio.console.Console
+import zio.delegate._
 import zio.interop.catz._
 import zio.random.Random
 import zio.system.System
@@ -29,38 +30,19 @@ object Main extends CatsApp {
   // Environment stages to build up the final environment from the initial one
   type EnvStage1 = Environment with AkkaContext with PureDep
 
-  private def toStage1(stage0: Environment, akkaContext: AkkaContext, pureDepImpl: PureDep.Service): EnvStage1 =
-    new Clock with Console with System with Random with Blocking with PureDep with AkkaContext {
-      override val actorSystem: typed.ActorSystem[_] = akkaContext.actorSystem
-      override val materializer: Materializer = akkaContext.materializer
-      override val pureDep: PureDep.Service = pureDepImpl
-      override val blocking: Blocking.Service[Any] = stage0.blocking
-      override val random: Random.Service[Any] = stage0.random
-      override val console: Console.Service[Any] = stage0.console
-      override val clock: Clock.Service[Any] = stage0.clock
-      override val system: System.Service[Any] = stage0.system
-    }
+  private def toStage1(stage0: Environment, actorSystem: typed.ActorSystem[_], materializer: Materializer): EnvStage1 =
+    PureDep.withPureDep[Environment with AkkaContext](
+      Context.withAkkaContext[Environment](
+        stage0, actorSystem, materializer))
 
   // Final application environment
   type FinalEnvironment = EnvStage1 with CatsDep with ZioDep with FutureDep
 
-  private def toFinal(stage1: EnvStage1,
-                      catsDepImpl: CatsDep.Service,
-                      zioDepImpl: ZioDep.Service,
-                      futureDepImpl: FutureDep.Service): FinalEnvironment =
-    new Clock with Console with System with Random with Blocking with PureDep with AkkaContext with CatsDep with ZioDep with FutureDep {
-      override val catsDep: CatsDep.Service = catsDepImpl
-      override val zioDep: ZioDep.Service = zioDepImpl
-      override val futureDep: FutureDep.Service = futureDepImpl
-      override val pureDep: PureDep.Service = stage1.pureDep
-      override val blocking: Blocking.Service[Any] = stage1.blocking
-      override val random: Random.Service[Any] = stage1.random
-      override val console: Console.Service[Any] = stage1.console
-      override val clock: Clock.Service[Any] = stage1.clock
-      override val system: System.Service[Any] = stage1.system
-      override val actorSystem: typed.ActorSystem[_] = stage1.actorSystem
-      override val materializer: Materializer = stage1.materializer
-    }
+  private def toFinal(stage1: EnvStage1): FinalEnvironment =
+    CatsDep.withCatsDep[EnvStage1 with FutureDep with ZioDep](
+      ZioDep.withZioDep[EnvStage1 with FutureDep](
+        FutureDep.withFutureDep[EnvStage1](
+          stage1)))
 
   // Main entry point
   override def run(args: List[String]): ZIO[Main.Environment, Nothing, Int] = {
@@ -89,31 +71,24 @@ object Main extends CatsApp {
         override val materializer: Materializer = mat
       }
     }(terminateActorSystem)
-    val pureDep = PureDep.Default
 
     managedContext.use { ctx =>
       f.provideSomeM[Environment, Throwable] {
         for {
           env <- ZIO.environment[Environment]
-        } yield toStage1(env, ctx, pureDep)
+        } yield toStage1(env, ctx.actorSystem, ctx.materializer)
       }
     }
   }
 
   // ... intermediate stages if needed
 
-  private def stageFinal[A](f: ZIO[FinalEnvironment, Throwable, A]): ZIO[EnvStage1, Throwable, A] = {
+  private def stageFinal[A](f: ZIO[FinalEnvironment, Throwable, A]): ZIO[EnvStage1, Throwable, A] =
     f.provideSomeM[EnvStage1, Throwable] {
       for {
-        catsDep <- CatsDep.create()
-        zioDep <- ZioDep.create()
-        futureDep <- FutureDep.create()
-        finalEnv <- ZIO.environment[EnvStage1].map { env =>
-          toFinal(env, catsDep, zioDep, futureDep)
-        }
-      } yield finalEnv
+        env <- ZIO.environment[EnvStage1]
+      } yield toFinal(env)
     }
-  }
 
   private def createInterop(): ZIO[FinalEnvironment, Nothing, Interop[FinalEnvironment]] =
     ZIO.environment[FinalEnvironment].map { env =>

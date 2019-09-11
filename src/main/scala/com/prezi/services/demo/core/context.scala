@@ -4,6 +4,7 @@ import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.adapter._
 import akka.stream.Materializer
 import zio.ZIO
+import zio.delegate._
 
 import scala.concurrent.ExecutionContext
 
@@ -15,6 +16,16 @@ trait AkkaContext {
 trait Context extends AkkaContext
 
 object Context {
+
+  def withAkkaContext[A](a: A, sys: ActorSystem[_], mat: Materializer)
+                        (implicit ev: A Mix AkkaContext): A with AkkaContext = {
+    class Instance(@delegate underlying: Any) extends AkkaContext {
+      override val actorSystem: ActorSystem[_] = sys
+      override val materializer: Materializer = mat
+    }
+    ev.mix(a, new Instance(a))
+  }
+
   def actorSystem: ZIO[AkkaContext, Nothing, ActorSystem[_]] =
     ZIO.environment[AkkaContext].map(_.actorSystem)
   def untypedActorSystem: ZIO[AkkaContext, Nothing, akka.actor.ActorSystem] =
