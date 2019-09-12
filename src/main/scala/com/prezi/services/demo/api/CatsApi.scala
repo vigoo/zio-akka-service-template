@@ -12,7 +12,7 @@ import scala.util.{Failure, Success}
 trait CatsApi {
   this: ErrorResponses with BaseCirceSupport =>
 
-  val interop: Interop[Main.FinalEnvironment]
+  implicit val interop: Interop[Main.FinalEnvironment]
   val catsDep: CatsDep.Service
 
   val catsRoute: Route =

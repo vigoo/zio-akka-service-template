@@ -8,7 +8,9 @@ import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import com.prezi.services.demo.Main
+import com.prezi.services.demo.api.directives.ZioDirectives
 import com.prezi.services.demo.core.Interop
+import com.prezi.services.demo.core.Interop._
 import zio._
 import zio.interop.reactiveStreams._
 import zio.random.Random
@@ -16,11 +18,11 @@ import zio.stream._
 
 import scala.util.{Failure, Success}
 
-trait StreamingApi {
+trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
   this: ErrorResponses =>
 
   val random: Random.Service[Any]
-  val interop: Interop[Main.FinalEnvironment]
+  implicit val interop: Interop[Main.FinalEnvironment]
   implicit val materializer: Materializer
 
   val streamingRoute: Route =
@@ -33,14 +35,13 @@ trait StreamingApi {
 
         val createResponse: UIO[HttpResponse] = for {
           publisher <- responseStream.toPublisher
-          akkaResponseStream = Source.fromPublisher(publisher).map(chunk => ByteString(chunk.toArray))
+          akkaResponseStream = Source.fromPublisher(publisher).map(_.toByteString)
           response = HttpResponse(
             entity = HttpEntity(ContentTypes.`application/octet-stream`, akkaResponseStream)
           )
         } yield response
 
-        val futureResponse = interop.zioToFuture(createResponse)
-        onComplete(futureResponse) {
+        onRIOComplete(createResponse) {
           case Failure(reason) =>
             respondWithError(reason)
           case Success(answer) =>
@@ -59,7 +60,7 @@ trait StreamingApi {
           val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().flatMap { case (subscriber, result) =>
             val akkaSink = akka.stream.scaladsl.Sink.fromSubscriber(subscriber)
             bodyStream
-              .map(bs => Chunk.fromArray(bs.toArray))
+              .map(_.toChunk)
               .runWith(akkaSink)
 
             result.map { finalCount =>
@@ -67,8 +68,7 @@ trait StreamingApi {
             }
           }
 
-          val futureResponse = interop.zioToFuture(createResponse)
-          onComplete(futureResponse) {
+          onRIOComplete(createResponse) {
             case Failure(reason) =>
               respondWithError(reason)
             case Success(answer) =>

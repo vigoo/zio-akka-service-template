@@ -112,7 +112,7 @@ object Main extends CatsApp {
     for {
       env <- ZIO.environment
     } yield new Api {
-      override val interop: Interop[FinalEnvironment] = interopImpl
+      override implicit val interop: Interop[FinalEnvironment] = interopImpl
       override val zioDep: ZioDep.Service = env.zioDep
       override val futureDep: FutureDep.Service = env.futureDep
       override val catsDep: CatsDep.Service = env.catsDep
