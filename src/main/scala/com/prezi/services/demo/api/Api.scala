@@ -9,8 +9,9 @@ trait Api
     with CatsApi
     with ZioApi
     with ActorApi
+    with StreamingApi
     with ErrorResponses
     with FailFastCirceSupport {
 
-  val route: Route = futureRoute ~ catsRoute ~ zioRoute ~ actorRoute
+  val route: Route = futureRoute ~ catsRoute ~ zioRoute ~ actorRoute ~ streamingRoute
 }

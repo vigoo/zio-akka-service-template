@@ -1,0 +1,80 @@
+package com.prezi.services.demo.api
+
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, ResponseEntity}
+import akka.http.scaladsl.server._
+import akka.http.scaladsl.server.Directives._
+import akka.stream.Materializer
+import akka.stream._
+import akka.stream.scaladsl._
+import akka.util.ByteString
+import com.prezi.services.demo.Main
+import com.prezi.services.demo.core.Interop
+import zio._
+import zio.interop.reactiveStreams._
+import zio.random.Random
+import zio.stream._
+
+import scala.util.{Failure, Success}
+
+trait StreamingApi {
+  this: ErrorResponses =>
+
+  val random: Random.Service[Any]
+  val interop: Interop[Main.FinalEnvironment]
+  implicit val materializer: Materializer
+
+  val streamingRoute: Route =
+    path("streaming") {
+      get {
+        // Example for taking a ZIO stream and using it as a Akka-HTTP response stream
+
+        val randomChunk: UIO[Chunk[Byte]] = random.nextBytes(16)
+        val responseStream: ZStream[Any, Nothing, Chunk[Byte]] = zio.stream.Stream.repeatEffect(randomChunk).take(8)
+
+        val createResponse: UIO[HttpResponse] = for {
+          publisher <- responseStream.toPublisher
+          akkaResponseStream = Source.fromPublisher(publisher).map(chunk => ByteString(chunk.toArray))
+          response = HttpResponse(
+            entity = HttpEntity(ContentTypes.`application/octet-stream`, akkaResponseStream)
+          )
+        } yield response
+
+        val futureResponse = interop.zioToFuture(createResponse)
+        onComplete(futureResponse) {
+          case Failure(reason) =>
+            respondWithError(reason)
+          case Success(answer) =>
+            complete(answer)
+        }
+      } ~
+      post {
+        // Example of taking an Akka-HTTP request in a streaming manner and processing it as a ZIO stream
+        extractDataBytes { bodyStream =>
+
+          // Defining the ZIO sink that produces the result for the response (counts its length)
+          val zioSink = zio.stream.Sink.foldLeft[Nothing, Chunk[Byte], Int](0)((sum, chunk) => sum + chunk.length)
+
+          // Defining the ZIO effect to create the Akka-HTTP response by running the Akka-HTTP request stream into
+          // the ZIO sink.
+          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().flatMap { case (subscriber, result) =>
+            val akkaSink = akka.stream.scaladsl.Sink.fromSubscriber(subscriber)
+            bodyStream
+              .map(bs => Chunk.fromArray(bs.toArray))
+              .runWith(akkaSink)
+
+            result.map { finalCount =>
+              HttpResponse(entity = HttpEntity(finalCount.toString))
+            }
+          }
+
+          val futureResponse = interop.zioToFuture(createResponse)
+          onComplete(futureResponse) {
+            case Failure(reason) =>
+              respondWithError(reason)
+            case Success(answer) =>
+              complete(answer)
+          }
+        }
+      }
+    }
+}

@@ -118,6 +118,8 @@ object Main extends CatsApp {
       override val catsDep: CatsDep.Service = env.catsDep
       override val actor: ActorRef[TestActor.Message] = testActor
       override val actorSystem: typed.ActorSystem[_] = env.actorSystem
+      override implicit val materializer: Materializer = env.materializer
+      override val random: Random.Service[Any] = env.random
     }
   }
 
