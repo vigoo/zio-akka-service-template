@@ -9,6 +9,8 @@ import akka.stream.{ActorMaterializer, Materializer}
 import cats.instances.string._
 import com.prezi.services.demo.actors.TestActor
 import com.prezi.services.demo.api.Api
+import com.prezi.services.demo.config.{Options, ServiceOptions, ServiceSpecificOptions}
+import com.prezi.services.demo.config.ServiceOptions.options
 import com.prezi.services.demo.core.Context._
 import com.prezi.services.demo.core.Interop._
 import com.prezi.services.demo.core.{AkkaContext, Context, Interop}
@@ -33,12 +35,12 @@ object Main extends CatsApp {
   // Environment types
 
   // Environment stages to build up the final environment from the initial one
-  type EnvStage1 = Environment with AkkaContext with PureDep
+  type EnvStage1 = Environment with ServiceSpecificOptions with AkkaContext with PureDep
 
-  private def toStage1(stage0: Environment, actorSystem: typed.ActorSystem[_], materializer: Materializer): EnvStage1 =
-    PureDep.withPureDep[Environment with AkkaContext](
-      withAkkaContext[Environment](
-        stage0, actorSystem, materializer))
+  private def toStage1(stage0: Environment, options: ServiceOptions, actorSystem: typed.ActorSystem[_], materializer: Materializer): EnvStage1 =
+    PureDep.withPureDep[Environment with AkkaContext with ServiceSpecificOptions](
+      withAkkaContext[Environment with ServiceSpecificOptions](
+        ServiceOptions.withServiceOptions[Environment](stage0, options), actorSystem, materializer))
 
   // Final application environment
   type FinalEnvironment = EnvStage1 with CatsDep with ZioDep with FutureDep
@@ -74,21 +76,23 @@ object Main extends CatsApp {
   }
 
   private def stage1[A](f: ZIO[EnvStage1, Throwable, A]): ZIO[Environment, Throwable, A] = {
-    val managedContext = ZManaged.make[Console, Throwable, AkkaContext] {
-      for {
-        sys <- ZIO(ActorSystem("demo-service"))
-        mat <- ZIO(ActorMaterializer()(sys))
-      } yield new AkkaContext {
-        override val actorSystem: typed.ActorSystem[_] = sys.toTyped
-        override val materializer: Materializer = mat
-      }
-    }(terminateActorSystem)
-
-    managedContext.use { ctx =>
-      f.provideSomeM[Environment, Throwable] {
+    ServiceOptions.environmentDependentOptions.flatMap { opt =>
+      val managedContext = ZManaged.make[Console, Throwable, AkkaContext] {
         for {
-          env <- ZIO.environment[Environment]
-        } yield toStage1(env, ctx.actorSystem, ctx.materializer)
+          sys <- ZIO(ActorSystem("demo-service", opt.config))
+          mat <- ZIO(ActorMaterializer()(sys))
+        } yield new AkkaContext {
+          override val actorSystem: typed.ActorSystem[_] = sys.toTyped
+          override val materializer: Materializer = mat
+        }
+      }(terminateActorSystem)
+
+      managedContext.use { ctx =>
+        f.provideSomeM[Environment, Throwable] {
+          for {
+            env <- ZIO.environment[Environment]
+          } yield toStage1(env, opt, ctx.actorSystem, ctx.materializer)
+        }
       }
     }
   }
@@ -125,14 +129,16 @@ object Main extends CatsApp {
 
   private def startHttpApi(api: Api): ZIO[FinalEnvironment, Nothing, ZManaged[Console, Throwable, ServerBinding]] = {
     untypedActorSystem.flatMap { implicit system =>
-      materializer.map { implicit mat =>
-        ZManaged.make[Console, Throwable, ServerBinding] {
-          console.putStrLn("Starting HTTP server").flatMap { _ =>
-            ZIO.fromFuture { implicit ec =>
-              Http().bindAndHandle(api.route, "0.0.0.0", port = 8080)
+      materializer.flatMap { implicit mat =>
+        options.map { opt =>
+          ZManaged.make[Console, Throwable, ServerBinding] {
+            console.putStrLn("Starting HTTP server").flatMap { _ =>
+              ZIO.fromFuture { implicit ec =>
+                Http().bindAndHandle(api.route, "0.0.0.0", port = opt.port)
+              }
             }
-          }
-        }(terminateHttpServer)
+          }(terminateHttpServer)
+        }
       }
     }
   }
