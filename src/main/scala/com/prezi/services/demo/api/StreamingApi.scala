@@ -1,12 +1,10 @@
 package com.prezi.services.demo.api
 
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, ResponseEntity}
-import akka.http.scaladsl.server._
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse}
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.server._
 import akka.stream.Materializer
-import akka.stream._
 import akka.stream.scaladsl._
-import akka.util.ByteString
 import com.prezi.services.demo.Main
 import com.prezi.services.demo.api.directives.ZioDirectives
 import com.prezi.services.demo.core.Interop

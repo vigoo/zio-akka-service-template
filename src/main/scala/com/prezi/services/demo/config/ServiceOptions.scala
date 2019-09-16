@@ -64,6 +64,13 @@ object ServiceOptions {
       finalConfig = baseConfig.withFallback(envSpecificConfig)
     } yield new ConfiguredServiceOptions(finalConfig, env)
 
+  def defaultTestOptions: ZIO[Any, Throwable, ServiceOptions] =
+    for {
+      baseConfig <- ZIO.effect(ConfigFactory.load())
+      envSpecificConfig <- ZIO.effect(ConfigFactory.load("test"))
+      finalConfig = baseConfig.withFallback(envSpecificConfig)
+    } yield new ConfiguredServiceOptions(finalConfig, Local)
+
   def withServiceOptions[A](a: A, opt: ServiceOptions)(implicit ev: A Mix ServiceSpecificOptions): A with ServiceSpecificOptions = {
     class Instance(@delegate underlying: Any) extends ServiceSpecificOptions {
       override val options: ServiceOptions = opt

@@ -13,7 +13,7 @@ import scala.concurrent.ExecutionContext
 import scala.util.Try
 
 class TestActor(env: TestActor.Environment) // Subset of the ZIO environment required by the actor
-               (implicit interop: Interop[Main.FinalEnvironment]) { // needed for the ZIO pipeTo syntax
+               (implicit interop: Interop[TestActor.Environment]) { // needed for the ZIO pipeTo syntax
   import TestActor._
 
   def start(): Behavior[Message] =
@@ -35,7 +35,7 @@ class TestActor(env: TestActor.Environment) // Subset of the ZIO environment req
 object TestActor {
   type Environment = ZioDep with PureDep // A subset of the final environment required by the actor
 
-  def create()(implicit interop: Interop[Main.FinalEnvironment]): ZIO[Environment, Nothing, Behavior[Message]] =
+  def create[R <: Environment]()(implicit interop: Interop[R]): ZIO[Environment, Nothing, Behavior[Message]] =
     ZIO.environment.map(env => new TestActor(env).start())
 
   sealed trait Message

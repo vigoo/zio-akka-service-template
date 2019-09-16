@@ -12,7 +12,9 @@ import zio.clock.Clock
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Success, Try}
 
-trait Interop[R] {
+trait Interop[+R] {
+  def ioToZio[A](f: IO[A]): ZIO[Any, Throwable, A]
+
   def ioToFuture[A](f: IO[A]): Future[A]
 
   def zioToFuture[A](f: ZIO[R, Throwable, A]): Future[A]
@@ -24,14 +26,15 @@ object Interop {
   def create[R](runtime: Runtime[R]): Interop[R] =
     new Interop[R] {
       override def ioToFuture[A](f: IO[A]): Future[A] =
-        runtime.unsafeRunToFuture[Throwable, A](
-          ZIO.effectAsync { callback =>
-            f.unsafeRunAsync {
-              case Left(failure) => callback(ZIO.fail(failure))
-              case Right(value) => callback(ZIO.succeed(value))
-            }
+        zioToFuture(ioToZio(f))
+
+      override def ioToZio[A](f: IO[A]): ZIO[Any, Throwable, A] =
+        ZIO.effectAsync { callback =>
+          f.unsafeRunAsync {
+            case Left(failure) => callback(ZIO.fail(failure))
+            case Right(value) => callback(ZIO.succeed(value))
           }
-        )
+        }
 
       override def zioToFuture[A](f: ZIO[R, Throwable, A]): Future[A] =
         runtime.unsafeRunToFuture[Throwable, A](f)
@@ -73,7 +76,7 @@ object Interop {
         implicit val scheduler: Scheduler = system.scheduler
 
         val futureAnswer = actor ? createMessage
-        ZIO.fromFuture { implicit ec => futureAnswer}
+        ZIO.fromFuture { implicit ec => futureAnswer }
       }
     }
   }
@@ -85,4 +88,5 @@ object Interop {
   implicit class ByteChunkOps(chunk: Chunk[Byte]) {
     def toByteString: ByteString = ByteString(chunk.toArray)
   }
+
 }

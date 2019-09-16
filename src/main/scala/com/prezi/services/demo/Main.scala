@@ -55,7 +55,7 @@ object Main extends CatsApp {
   override def run(args: List[String]): ZIO[Main.Environment, Nothing, Int] = {
     for {
       _ <- console.putStrLn("Starting up...")
-      _ <- stage1 {
+      _ <- stage1(ServiceOptions.environmentDependentOptions) {
         stageFinal {
           for {
             interop <- createInterop()
@@ -75,8 +75,8 @@ object Main extends CatsApp {
     } yield 0
   }
 
-  private def stage1[A](f: ZIO[EnvStage1, Throwable, A]): ZIO[Environment, Throwable, A] = {
-    ServiceOptions.environmentDependentOptions.flatMap { opt =>
+  def stage1[A](getOptions: ZIO[Environment, Throwable, ServiceOptions])(f: ZIO[EnvStage1, Throwable, A]): ZIO[Environment, Throwable, A] = {
+    getOptions.flatMap { opt =>
       val managedContext = ZManaged.make[Console, Throwable, AkkaContext] {
         for {
           sys <- ZIO(ActorSystem("demo-service", opt.config))
@@ -99,7 +99,7 @@ object Main extends CatsApp {
 
   // ... intermediate stages if needed
 
-  private def stageFinal[A](f: ZIO[FinalEnvironment, Throwable, A]): ZIO[EnvStage1, Throwable, A] =
+  def stageFinal[A](f: ZIO[FinalEnvironment, Throwable, A]): ZIO[EnvStage1, Throwable, A] =
     f.provideSomeM[EnvStage1, Throwable] {
       for {
         env <- ZIO.environment[EnvStage1]
@@ -111,8 +111,8 @@ object Main extends CatsApp {
       Interop.create(Runtime(env, runtime.Platform))
     }
 
-  private def createHttpApi(interopImpl: Interop[FinalEnvironment],
-                            testActor: ActorRef[TestActor.Message]): ZIO[FinalEnvironment, Nothing, Api] = {
+  def createHttpApi(interopImpl: Interop[FinalEnvironment],
+                    testActor: ActorRef[TestActor.Message]): ZIO[FinalEnvironment, Nothing, Api] = {
     for {
       env <- ZIO.environment
     } yield new Api {

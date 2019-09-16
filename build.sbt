@@ -17,7 +17,12 @@ libraryDependencies ++= Seq(
   "dev.zio" %% "zio-delegate" % "0.0.3",
   "io.circe" %% "circe-core" % "0.11.1",
   "io.circe" %% "circe-generic" % "0.11.1",
-  "de.heikoseeberger" %% "akka-http-circe" % "1.27.0"
+  "de.heikoseeberger" %% "akka-http-circe" % "1.27.0",
+
+  "org.specs2" %% "specs2-core" % "4.7.0" % Test,
+  "org.specs2" %% "specs2-junit" % "4.7.0" % Test,
+  "com.typesafe.akka" %% "akka-stream-testkit" % "2.5.25" % Test,
+  "com.typesafe.akka" %% "akka-http-testkit" % "10.1.9" % Test,
 )
 
 addCompilerPlugin("org.scalamacros" % "paradise"  % "2.1.1" cross CrossVersion.full)
