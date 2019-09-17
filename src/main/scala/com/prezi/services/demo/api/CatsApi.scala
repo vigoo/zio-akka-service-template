@@ -9,10 +9,15 @@ import de.heikoseeberger.akkahttpcirce.BaseCirceSupport
 
 import scala.util.{Failure, Success}
 
+/**
+ * Example of evaluating a cats-effect IO function to provide a HTTP response
+ */
 trait CatsApi {
   this: ErrorResponses with BaseCirceSupport =>
 
   implicit val interop: Interop[Main.FinalEnvironment]
+
+  // dependencies
   val catsDep: CatsDep.Service
 
   val catsRoute: Route =

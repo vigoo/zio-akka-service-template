@@ -10,9 +10,13 @@ import de.heikoseeberger.akkahttpcirce.BaseCirceSupport
 
 import scala.util.{Failure, Success}
 
+/**
+ * Example of evaluating a ZIO effect to create a HTTP response
+ */
 trait ZioApi extends ZioDirectives[Main.FinalEnvironment] {
   this: ErrorResponses with BaseCirceSupport  =>
 
+  // dependencies
   implicit val interop: Interop[Main.FinalEnvironment]
   val zioDep: ZioDep.Service
 

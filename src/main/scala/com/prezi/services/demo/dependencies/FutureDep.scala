@@ -8,6 +8,8 @@ import zio.delegate._
 
 import scala.concurrent.{ExecutionContext, Future}
 
+// An example dependency with a Future interface
+
 trait FutureDep {
   val futureDep: FutureDep.Service
 }

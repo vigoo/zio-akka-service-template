@@ -6,6 +6,7 @@ import zio.system.System
 import zio.ZIO
 import zio.delegate.{Mix, delegate}
 
+/** Different service environments (determining its configuration) */
 sealed trait ServiceEnvironment
 
 case object Local extends ServiceEnvironment
@@ -21,25 +22,30 @@ object ServiceEnvironment {
     }
 }
 
+/** Generic options mixin */
 trait Options[S <: Options.Service] {
   val options: S
 }
 
 object Options {
+  /** Base requirements for service options */
   trait Service {
     val config: Config
     val environment: ServiceEnvironment
   }
 }
 
+/** Service specific service mixin. We have to use this currently as zio-delegate cannot deal with parametric types */
 trait ServiceSpecificOptions extends Options[ServiceOptions] {
   val options: ServiceOptions
 }
 
+/** Service specific options */
 trait ServiceOptions extends Options.Service {
   val port: Int
 }
 
+/** Implementation of service specific options read from a Lightbend config node */
 class ConfiguredServiceOptions(override val config: Config,
                                override val environment: ServiceEnvironment) extends ServiceOptions {
   override val port: Int = config.getInt("service.port")
@@ -49,6 +55,7 @@ object ServiceOptions {
 
   case class NoValidEnvironmentSpecified(specified: Option[String]) extends Exception(s"No valid environment was specified ($specified)")
 
+  /** Loads service specific options by determining the environment from a system property */
   def environmentDependentOptions: ZIO[System, Throwable, ServiceOptions] =
     for {
       optEnvName <- system.property("environment")
@@ -64,6 +71,7 @@ object ServiceOptions {
       finalConfig = baseConfig.withFallback(envSpecificConfig)
     } yield new ConfiguredServiceOptions(finalConfig, env)
 
+  /** Loads service specific options defined for test running */
   def defaultTestOptions: ZIO[Any, Throwable, ServiceOptions] =
     for {
       baseConfig <- ZIO.effect(ConfigFactory.load())
@@ -71,6 +79,7 @@ object ServiceOptions {
       finalConfig = baseConfig.withFallback(envSpecificConfig)
     } yield new ConfiguredServiceOptions(finalConfig, Local)
 
+  /** Mixin function */
   def withServiceOptions[A](a: A, opt: ServiceOptions)(implicit ev: A Mix ServiceSpecificOptions): A with ServiceSpecificOptions = {
     class Instance(@delegate underlying: Any) extends ServiceSpecificOptions {
       override val options: ServiceOptions = opt
@@ -78,6 +87,7 @@ object ServiceOptions {
     ev.mix(a, new Instance(a))
   }
 
+  /** Helper to access the options from the environment */
   def options: ZIO[ServiceSpecificOptions, Nothing, ServiceOptions] = ZIO.environment[ServiceSpecificOptions].map(_.options)
 
   private def configNameOf(environment: ServiceEnvironment): String =

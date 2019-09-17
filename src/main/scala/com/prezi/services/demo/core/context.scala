@@ -8,15 +8,18 @@ import zio.delegate._
 
 import scala.concurrent.ExecutionContext
 
+/** Akka specific contextual values */
 trait AkkaContext {
   val actorSystem: ActorSystem[_]
   val materializer: Materializer
 }
 
+/** All global contextual values */
 trait Context extends AkkaContext
 
 object Context {
 
+  /** Mixin function */
   def withAkkaContext[A](a: A, sys: ActorSystem[_], mat: Materializer)
                         (implicit ev: A Mix AkkaContext): A with AkkaContext = {
     class Instance(@delegate underlying: Any) extends AkkaContext {
@@ -25,6 +28,8 @@ object Context {
     }
     ev.mix(a, new Instance(a))
   }
+
+  // Helper functions to access contextual values from the environment
 
   def actorSystem: ZIO[AkkaContext, Nothing, ActorSystem[_]] =
     ZIO.environment[AkkaContext].map(_.actorSystem)

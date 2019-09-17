@@ -16,9 +16,13 @@ import zio.stream._
 
 import scala.util.{Failure, Success}
 
+/**
+ * Example of interopability between Akka Streams and ZIO streams in request handlers
+ */
 trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
   this: ErrorResponses =>
 
+  // dependencies
   val random: Random.Service[Any]
   implicit val interop: Interop[Main.FinalEnvironment]
   implicit val materializer: Materializer

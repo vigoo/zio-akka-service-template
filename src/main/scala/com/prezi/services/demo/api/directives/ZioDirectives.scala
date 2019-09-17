@@ -7,7 +7,10 @@ import zio._
 
 import scala.util.Try
 
-trait ZioDirectives[R] {
+/**
+ * Provides onComplete style directives to respond with running ZIO effects
+ */
+trait ZioDirectives[+R] {
   implicit val interop: Interop[R]
 
   def onZIOComplete[E, A](f: ZIO[R, E, A]): Directive1[Try[Either[E, A]]] =

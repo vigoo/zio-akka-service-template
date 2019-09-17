@@ -12,6 +12,7 @@ import zio.clock.Clock
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Success, Try}
 
+/** Interface for non-ZIO code segments to run ZIO or cats-effect values */
 trait Interop[+R] {
   def ioToZio[A](f: IO[A]): ZIO[Any, Throwable, A]
 
@@ -23,6 +24,7 @@ trait Interop[+R] {
 }
 
 object Interop {
+  // Creates an implementation based on a ZIO runtime, should be used from the Main when the final stage is ready
   def create[R](runtime: Runtime[R]): Interop[R] =
     new Interop[R] {
       override def ioToFuture[A](f: IO[A]): Future[A] =
@@ -47,6 +49,8 @@ object Interop {
         runtime.unsafeRunToFuture[Throwable, Either[E, A]](mappedF)
       }
     }
+
+  // Extension methods supporting the cooperation of Akka and ZIO code
 
   implicit class ZioOps[R, A](f: ZIO[R, Throwable, A]) {
     def pipeTo[M, RI <: R](actor: ActorRef[M], createMessage: Try[A] => M)

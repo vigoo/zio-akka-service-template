@@ -14,9 +14,13 @@ import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
+/**
+ * Example for assembling a response by asking a typed actor
+ */
 trait ActorApi {
   this: ErrorResponses with BaseCirceSupport =>
 
+  // dependencies
   val actor: ActorRef[TestActor.Message]
   val actorSystem: ActorSystem[_]
 

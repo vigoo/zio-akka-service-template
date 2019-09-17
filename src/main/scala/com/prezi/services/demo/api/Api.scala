@@ -4,6 +4,9 @@ import akka.http.scaladsl.server._
 import akka.http.scaladsl.server.Directives._
 import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
 
+/**
+ *  The service's full HTTP API
+ */
 trait Api
   extends FutureApi
     with CatsApi

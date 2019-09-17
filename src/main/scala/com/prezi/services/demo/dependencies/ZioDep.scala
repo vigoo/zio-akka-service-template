@@ -5,6 +5,8 @@ import com.prezi.services.demo.model.Answer
 import zio.ZIO
 import zio.delegate._
 
+// An example dependency with a ZIO interface
+
 trait ZioDep {
   val zioDep: ZioDep.Service
 }

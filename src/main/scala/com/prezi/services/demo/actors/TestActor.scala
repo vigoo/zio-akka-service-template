@@ -2,7 +2,6 @@ package com.prezi.services.demo.actors
 
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
-import com.prezi.services.demo.Main
 import com.prezi.services.demo.core.Interop
 import com.prezi.services.demo.core.Interop._
 import com.prezi.services.demo.dependencies.{PureDep, ZioDep}
@@ -12,6 +11,12 @@ import zio.ZIO
 import scala.concurrent.ExecutionContext
 import scala.util.Try
 
+/**
+ * Example of an actor that gets its dependencies from the ZIO environment
+ *
+ * @param env The actor's required environment
+ * @param interop Interop support, must be passed around from bootstrap
+ */
 class TestActor(env: TestActor.Environment) // Subset of the ZIO environment required by the actor
                (implicit interop: Interop[TestActor.Environment]) { // needed for the ZIO pipeTo syntax
   import TestActor._
@@ -35,6 +40,9 @@ class TestActor(env: TestActor.Environment) // Subset of the ZIO environment req
 object TestActor {
   type Environment = ZioDep with PureDep // A subset of the final environment required by the actor
 
+  /**
+   * ZIO effect that creates TestActor's initial behavior by reading its dependencies from the environment
+   */
   def create[R <: Environment]()(implicit interop: Interop[R]): ZIO[Environment, Nothing, Behavior[Message]] =
     ZIO.environment.map(env => new TestActor(env).start())
 

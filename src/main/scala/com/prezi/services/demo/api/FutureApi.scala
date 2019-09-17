@@ -7,9 +7,13 @@ import de.heikoseeberger.akkahttpcirce.BaseCirceSupport
 
 import scala.util.{Failure, Success}
 
+/**
+ * Example of evaluating a Future value to create a response
+ */
 trait FutureApi {
   this: ErrorResponses with BaseCirceSupport =>
 
+  // dependencies
   val futureDep: FutureDep.Service
 
   val futureRoute: Route =
