@@ -19,7 +19,7 @@ In the README I will highlight some parts of the example but see the source code
 
 ## Bootstrap
  
-The dependencies follow the _module pattern_ of ZIO, for example:
+The dependencies follow the _module pattern_ of ZIO (except that for non-ZIO dependencies we don't need the environment type parameter), for example:
 
 ```scala
 trait PureDep {
@@ -37,6 +37,30 @@ object PureDep {
     }
   }
 }
+
+@accessible(">")
+trait ZioDep {
+  val zioDep: ZioDep.Service[Any]
+}
+
+object ZioDep {
+
+  trait Service[R] {
+    def provideAnswer(input: Int): ZIO[R, Throwable, Answer]
+  }
+
+  class Live(pureDep: PureDep.Service) extends ZioDep {
+    override val zioDep: Service[Any] = new Service[Any] {
+      override def provideAnswer(input: Int): ZIO[Any, Throwable, Answer] =
+        ZIO.effect(pureDep.toAnswer(input))
+    }
+  }
+
+  object Live {
+    val create: ZIO[PureDep, Nothing, ZioDep] =
+      ZIO.environment[PureDep].map(env => new Live(env.pureDep))
+  }
+}
 ```
 
 In this style, `PureDep` is the mixin that adds a `pureDep` field to the final environment, 
@@ -48,61 +72,68 @@ The ZIO application entry point defines a default environment that consists of:
 Clock with Console with System with Random with Blocking
 ```
 
-Instead of overriding this, we are defining multiple __stages__ where each one is built on top of the previous ones.
-The number of stages can depend on the service.
+Instead of overriding this, we can build the final environment incrementally with the help of `zio-macros` where each dependency 
+can use the already created ones.
 
-In the example we define the following stages:
+In the example we define the following final environment:
 
 ```scala
-type EnvStage1 = Environment with ServiceSpecificOptions with AkkaContext with PureDep
-type FinalEnvironment = EnvStage1 with CatsDep with ZioDep with FutureDep
+type FinalEnvironment = ZEnv with ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
 ```
 
-Here the `CatsDep`, `ZioDep` and `FutureDep` examples are all depending on `PureDep` so they are created in a separate
-step. Alternatively they could be added in a single step and `pureDep` explicitly passed as a parameter but this way
-it is more generic and scalable.
+Here the `CatsDep`, `ZioDep` and `FutureDep` examples are all depending on `PureDep`. 
 
-The `main` function builds up the stages incrementally, finally creates the service API handler and a test actor and 
+The `main` function builds up the environment, then creates the service API handler and a test actor and 
 runs the service.
 
 ### Incremental environment building
-For building the environment one by one we use the `zio-delegate` library's macro.
-
-This means for each dependency we define a mixin function:
+To build the environment we define an _enricher_ for each, such as:
 
 ```scala
-  def withZioDep[A <: PureDep](a: A)(implicit ev: A Mix ZioDep): A with ZioDep = {
-    class Instance(@delegate underlying: PureDep) extends Live
-    ev.mix(a, new Instance(a))
-  }
-```
+private val enrichWithAkkaContext = enrichWithManaged[AkkaContext](AkkaContext.Default.managed)
+private val enrichWithZioDep = enrichWithM[ZioDep](ZioDep.Live.create)
+``` 
 
-and when we are building _stage n+1_ on top of _stage n_ we compose these functions:
+then we initialize all with the `@@` operator:
 
 ```scala
-def toFinal(stage1: EnvStage1): FinalEnvironment =
-  CatsDep.withCatsDep[EnvStage1 with FutureDep with ZioDep](
-    ZioDep.withZioDep[EnvStage1 with FutureDep](
-      FutureDep.withFutureDep[EnvStage1](
-        stage1)))
+for {
+  options <- getOptions
+  finalEnv = ZIO.succeed(new DefaultRuntime {}.environment) @@
+    enrichWithServiceSpecificOptions(options) @@
+    enrichWithAkkaContext @@
+    enrichWithPureDep @@
+    enrichWithCatsDep @@
+    enrichWithZioDep @@
+    enrichWithFutureDep
+  result <- f.provideSomeManaged(finalEnv)
+} yield result
 ```
 
 ## Context
-One of the stage 1 dependencies is `Context` which currently only consists of `AkkaContext`. This holds the actor system
-and materializer for Akka.
+One of the dependencies is `AkkaContext`. This holds the actor system for Akka (note that a materializer is no longer needed as it is tied to the system since Akka 2.6).
 
 This environment is added as a _managed resource_ that ensures that it gets properly terminated:
 
 ```scala
-  val managedContext = ZManaged.make[Console, Throwable, AkkaContext] {
-    for {
-      sys <- ZIO(ActorSystem("demo-service", opt.config))
-      mat <- ZIO(ActorMaterializer()(sys))
-    } yield new AkkaContext {
-      override val actorSystem: typed.ActorSystem[_] = sys.toTyped
-      override val materializer: Materializer = mat
-    }
-  }(terminateActorSystem)
+private val create: ZIO[ServiceSpecificOptions, Nothing, AkkaContext] =
+  for {
+    opts <- options
+  } yield new AkkaContext {
+    override val actorSystem: ActorSystem[_] = akka.actor.ActorSystem("service", opts.config).toTyped
+  }
+
+private def terminate(context: AkkaContext): ZIO[Console, Nothing, Unit] = {
+  console.putStrLn("Terminating actor system").flatMap { _ =>
+    ZIO
+      .fromFuture { implicit ec =>
+        context.actorSystem.toClassic.terminate()
+      }
+      .unit
+      .catchAll(logFatalError)
+  }
+}
+val managed = ZManaged.make[Console with ServiceSpecificOptions, Throwable, AkkaContext](create)(terminate)
 ```
 
 ## Working with actors
@@ -244,11 +275,11 @@ The opposite direction is similar, handling an incoming request in a ZIO stream:
 
 ```scala
   // Defining the ZIO sink that produces the result for the response (counts its length)
-  val zioSink = zio.stream.Sink.foldLeft[Nothing, Chunk[Byte], Int](0)((sum, chunk) => sum + chunk.length)
+  val zioSink = zio.stream.Sink.foldLeft[Chunk[Byte], Int](0)((sum, chunk) => sum + chunk.length)
 
   // Defining the ZIO effect to create the Akka-HTTP response by running the Akka-HTTP request stream into
   // the ZIO sink.
-  val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().flatMap { case (subscriber, result) =>
+  val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().use { case (subscriber, result) =>
     val akkaSink = akka.stream.scaladsl.Sink.fromSubscriber(subscriber)
     bodyStream
       .map(_.toChunk)
@@ -264,7 +295,7 @@ The opposite direction is similar, handling an incoming request in a ZIO stream:
 Service options are still based on the Lightbend `config` library as it is used for Akka and other Akka based libraries.
 It is loaded as a ZIO effect though and provided to other parts of the application as part of the ZIO environment.
 
-## Testing
+## Testing with specs2
 The project provides examples for testing all the previously mentioned cases:
 
 `ZioSupport` trait provides support to run ZIO effects in specs2 tests. The `TestContextSupport` and `OptionsSupport`
@@ -280,3 +311,5 @@ the same stage building functions from `Main` as the real application bootstrap.
 Similarly to test actors we need to build a partial environment at least as the actors are supposed to be created within
 ZIO effects for proper dependency injection.
  
+## Testing with zio-test
+TODO

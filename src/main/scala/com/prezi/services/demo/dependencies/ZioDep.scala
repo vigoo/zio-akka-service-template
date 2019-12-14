@@ -17,7 +17,7 @@ object ZioDep {
     def provideAnswer(input: Int): ZIO[R, Throwable, Answer]
   }
 
-  class Live(pureDep: PureDep.Service[Any]) extends ZioDep {
+  class Live(pureDep: PureDep.Service) extends ZioDep {
     override val zioDep: Service[Any] = new Service[Any] {
       override def provideAnswer(input: Int): ZIO[Any, Throwable, Answer] =
         ZIO.effect(pureDep.toAnswer(input))

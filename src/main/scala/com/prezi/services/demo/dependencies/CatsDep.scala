@@ -3,21 +3,20 @@ package com.prezi.services.demo.dependencies
 import cats.effect.IO
 import com.prezi.services.demo.model.Answer
 import zio.ZIO
-import zio.macros.annotation.accessible
 
 // An example dependency with a cats-effect IO interface
 
 trait CatsDep {
-  val catsDep: CatsDep.Service[Any]
+  val catsDep: CatsDep.Service
 }
 
 object CatsDep {
-  trait Service[R] {
+  trait Service {
     def provideAnswer(input: Int): IO[Answer]
   }
 
-  class Live(pureDep: PureDep.Service[Any]) extends CatsDep {
-    override val catsDep: Service[Any] =  new Service[Any] {
+  class Live(pureDep: PureDep.Service) extends CatsDep {
+    override val catsDep: Service =  new Service {
       override def provideAnswer(input: Int): IO[Answer] =
         IO.delay(pureDep.toAnswer(input))
     }

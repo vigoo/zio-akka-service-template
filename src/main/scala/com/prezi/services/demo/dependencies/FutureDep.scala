@@ -10,17 +10,17 @@ import scala.concurrent.{ExecutionContext, Future}
 // An example dependency with a Future interface
 
 trait FutureDep {
-  val futureDep: FutureDep.Service[Any]
+  val futureDep: FutureDep.Service
 }
 
 object FutureDep {
-  trait Service[R] {
+  trait Service {
     def provideAnswer(input: Int): Future[Answer]
   }
 
-  class Live(pureDep: PureDep.Service[Any])(implicit executionContext: ExecutionContext) extends FutureDep {
+  class Live(pureDep: PureDep.Service)(implicit executionContext: ExecutionContext) extends FutureDep {
 
-    override val futureDep: Service[Any] = new Service[Any] {
+    override val futureDep: Service = new Service {
       override def provideAnswer(input: Int): Future[Answer] = {
         Future(pureDep.toAnswer(input))
       }
