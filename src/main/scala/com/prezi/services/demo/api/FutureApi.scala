@@ -14,12 +14,12 @@ trait FutureApi {
   this: ErrorResponses with BaseCirceSupport =>
 
   // dependencies
-  val futureDep: FutureDep.Service
+  val futureDep: FutureDep.Service[Any]
 
   val futureRoute: Route =
     path("future") {
       get {
-        parameter('input.as[Int]) { input =>
+        parameter("input".as[Int]) { input =>
           val futureAnswer = futureDep.provideAnswer(input)
           onComplete(futureAnswer) {
             case Failure(reason) =>

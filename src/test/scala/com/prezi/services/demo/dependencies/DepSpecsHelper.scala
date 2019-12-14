@@ -3,16 +3,17 @@ package com.prezi.services.demo.dependencies
 import com.prezi.services.demo.{OptionsSupport, TestContextSupport, ZioSupport}
 import com.prezi.services.demo.config.{ServiceOptions, ServiceSpecificOptions}
 import com.prezi.services.demo.core.AkkaContext
-import zio.delegate._
+import zio.macros.delegate._
 import zio.ZIO
 
 trait DepSpecsHelper {
   this: ZioSupport with OptionsSupport with TestContextSupport =>
 
-  protected def withPureDepBasedDep[T, Dep, DepS](addDep: BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep => BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep with Dep,
+  protected def withPureDepBasedDep[T, Dep, DepS](create: ZIO[BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep, Nothing, Dep],
                                                   getDep: Dep => DepS)
                                                  (getOptions: ZIO[Any, Throwable, ServiceOptions])
-                                                 (f: DepS => ZIO[BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep with Dep, Throwable, T]): ZIO[BaseEnvironment, Throwable, T] =
+                                                 (f: DepS => ZIO[BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep with Dep, Throwable, T])
+                                                 (implicit ev: Mix[BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep, Dep]): ZIO[BaseEnvironment, Throwable, T] =
     getOptions.flatMap { options =>
       withOptions(options) {
         withContext {
@@ -22,10 +23,10 @@ trait DepSpecsHelper {
           } yield result
 
           runF.provideSomeM {
-            for {
-              env <- ZIO.environment[BaseEnvironment with ServiceSpecificOptions with AkkaContext]
-              newEnv = addDep(PureDep.withPureDep[BaseEnvironment with ServiceSpecificOptions with AkkaContext](env))
-            } yield newEnv
+            (for {
+              base <- ZIO.environment[BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep]
+              dep <- create
+            } yield ev.mix(base, dep)).provideSomeM(ZIO.environment[BaseEnvironment with ServiceSpecificOptions with AkkaContext] @@ enrichWith[PureDep](PureDep.Live))
           }
         }
       }

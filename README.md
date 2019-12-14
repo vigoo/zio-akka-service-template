@@ -19,7 +19,7 @@ In the README I will highlight some parts of the example but see the source code
 
 ## Bootstrap
  
-The dependencies follow the style of ZIO, for example:
+The dependencies follow the _module pattern_ of ZIO, for example:
 
 ```scala
 trait PureDep {

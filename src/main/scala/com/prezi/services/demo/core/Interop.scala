@@ -1,7 +1,6 @@
 package com.prezi.services.demo.core
 
-import akka.actor.Scheduler
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
 import akka.actor.typed.scaladsl.adapter._
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.{ByteString, Timeout}
@@ -68,14 +67,14 @@ object Interop {
         initialBehavior <- createInitialBehavior
         time <- clock.nanoTime // TODO: UUID would be better
         uniqueName = s"${namePrefix}_$time"
-        actor <- ZIO.effect(system.toUntyped.spawn(initialBehavior, uniqueName))
+        actor <- ZIO.effect(system.toClassic.spawn(initialBehavior, uniqueName))
       } yield actor
     }
   }
 
   implicit class ActorRefOps[T](actor: ActorRef[T]) {
     def ask[R <: AkkaContext, A](createMessage: ActorRef[A] => T, timeout: Timeout): ZIO[R, Throwable, A] = {
-      Context.actorSystem.flatMap { system =>
+      AkkaContext.actorSystem.flatMap { system =>
         implicit val t: Timeout = timeout
         implicit val scheduler: Scheduler = system.scheduler
 

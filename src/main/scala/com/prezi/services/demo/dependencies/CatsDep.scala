@@ -1,33 +1,30 @@
 package com.prezi.services.demo.dependencies
 
 import cats.effect.IO
-import com.prezi.services.demo.Main
 import com.prezi.services.demo.model.Answer
 import zio.ZIO
-import zio.delegate._
+import zio.macros.annotation.accessible
 
 // An example dependency with a cats-effect IO interface
 
 trait CatsDep {
-  val catsDep: CatsDep.Service
+  val catsDep: CatsDep.Service[Any]
 }
 
 object CatsDep {
-  trait Service {
+  trait Service[R] {
     def provideAnswer(input: Int): IO[Answer]
   }
 
-  trait Live extends CatsDep {
-    this: PureDep =>
-
-    override val catsDep: Service =  new Service {
+  class Live(pureDep: PureDep.Service[Any]) extends CatsDep {
+    override val catsDep: Service[Any] =  new Service[Any] {
       override def provideAnswer(input: Int): IO[Answer] =
         IO.delay(pureDep.toAnswer(input))
     }
   }
 
-  def withCatsDep[A <: PureDep](a: A)(implicit ev: A Mix CatsDep): A with CatsDep = {
-    class Instance(@delegate underlying: PureDep) extends Live
-    ev.mix(a, new Instance(a))
+  object Live {
+    val create: ZIO[PureDep, Nothing, CatsDep] =
+      ZIO.environment[PureDep].map(env => new Live(env.pureDep))
   }
 }

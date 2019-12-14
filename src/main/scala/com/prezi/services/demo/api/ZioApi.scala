@@ -18,12 +18,12 @@ trait ZioApi extends ZioDirectives[Main.FinalEnvironment] {
 
   // dependencies
   implicit val interop: Interop[Main.FinalEnvironment]
-  val zioDep: ZioDep.Service
+  val zioDep: ZioDep.Service[Any]
 
   val zioRoute: Route =
     path("zio") {
       get {
-        parameter('input.as[Int]) { input =>
+        parameter("input".as[Int]) { input =>
           val zioAnswer = zioDep.provideAnswer(input)
           onRIOComplete(zioAnswer) {
             case Failure(reason) =>

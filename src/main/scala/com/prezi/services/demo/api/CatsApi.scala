@@ -18,12 +18,12 @@ trait CatsApi {
   implicit val interop: Interop[Main.FinalEnvironment]
 
   // dependencies
-  val catsDep: CatsDep.Service
+  val catsDep: CatsDep.Service[Any]
 
   val catsRoute: Route =
     path("cats") {
       get {
-        parameter('input.as[Int]) { input =>
+        parameter("input".as[Int]) { input =>
           val ioAnswer = catsDep.provideAnswer(input)
           val futureAnswer = interop.ioToFuture(ioAnswer)
 

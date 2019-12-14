@@ -1,7 +1,6 @@
 package com.prezi.services.demo.api
 
-import akka.actor.Scheduler
-import akka.actor.typed.{ActorRef, ActorSystem}
+import akka.actor.typed.{ActorRef, ActorSystem, Scheduler}
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.server.Directives._
@@ -27,7 +26,7 @@ trait ActorApi {
   val actorRoute: Route =
     path("actor") {
       get {
-        parameter('input.as[Int]) { input =>
+        parameter("input".as[Int]) { input =>
           implicit val timeout: Timeout = 1.second
           implicit val scheduler: Scheduler = actorSystem.scheduler
 

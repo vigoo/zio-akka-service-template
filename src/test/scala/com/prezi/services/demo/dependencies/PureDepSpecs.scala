@@ -3,7 +3,6 @@ package com.prezi.services.demo.dependencies
 import com.prezi.services.demo.ZioSupport
 import com.prezi.services.demo.model.Answer
 import org.specs2.mutable.SpecificationWithJUnit
-import zio.delegate._
 
 class PureDepSpecs extends SpecificationWithJUnit with ZioSupport {
 
@@ -14,6 +13,6 @@ class PureDepSpecs extends SpecificationWithJUnit with ZioSupport {
     }
   }
 
-  private def create(): PureDep.Service =
-    PureDep.withPureDep(baseEnvironment).pureDep
+  private def create(): PureDep.Service[Any] =
+    PureDep.Live.pureDep
 }

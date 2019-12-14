@@ -8,8 +8,8 @@ import zio.internal.PlatformLive
 trait ZioSupport {
   this: Specification =>
 
-  type BaseEnvironment = Main.Environment
-  protected val baseEnvironment: BaseEnvironment = Main.Environment
+  type BaseEnvironment = ZEnv
+  protected val baseEnvironment: BaseEnvironment = new DefaultRuntime {}.environment
 
   private lazy val platform = PlatformLive.Default
   protected lazy val runtime = Runtime(baseEnvironment, platform)

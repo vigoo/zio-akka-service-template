@@ -1,33 +1,31 @@
 package com.prezi.services.demo.dependencies
 
-import com.prezi.services.demo.Main
 import com.prezi.services.demo.model.Answer
 import zio.ZIO
-import zio.delegate._
+import zio.macros.annotation.accessible
 
 // An example dependency with a ZIO interface
 
+@accessible(">")
 trait ZioDep {
-  val zioDep: ZioDep.Service
+  val zioDep: ZioDep.Service[Any]
 }
 
 object ZioDep {
 
-  trait Service {
-    def provideAnswer(input: Int): ZIO[PureDep, Throwable, Answer]
+  trait Service[R] {
+    def provideAnswer(input: Int): ZIO[R, Throwable, Answer]
   }
 
-  trait Live extends ZioDep {
-    this: PureDep =>
-
-    override val zioDep: Service = new Service {
-      override def provideAnswer(input: Int): ZIO[PureDep, Throwable, Answer] =
+  class Live(pureDep: PureDep.Service[Any]) extends ZioDep {
+    override val zioDep: Service[Any] = new Service[Any] {
+      override def provideAnswer(input: Int): ZIO[Any, Throwable, Answer] =
         ZIO.effect(pureDep.toAnswer(input))
     }
   }
 
-  def withZioDep[A <: PureDep](a: A)(implicit ev: A Mix ZioDep): A with ZioDep = {
-    class Instance(@delegate underlying: PureDep) extends Live
-    ev.mix(a, new Instance(a))
+  object Live {
+    val create: ZIO[PureDep, Nothing, ZioDep] =
+      ZIO.environment[PureDep].map(env => new Live(env.pureDep))
   }
 }

@@ -1,29 +1,28 @@
 package com.prezi.services.demo.dependencies
 
 import com.prezi.services.demo.model.Answer
-import zio.delegate._
+import zio.ZIO
+import zio.macros.accessible._
+import zio.macros.annotation.accessible
 
 // An example dependency with a pure interface, also used to show an example of one dependency depending on another
 // (as CatsDep, FutureDep and ZioDep are all depending on this one)
 
 trait PureDep {
-  val pureDep: PureDep.Service
+  val pureDep: PureDep.Service[Any]
 }
 
 object PureDep {
 
-  trait Service {
+  trait Service[R] {
     def toAnswer(input: Int): Answer
   }
 
   trait Live extends PureDep {
-    override val pureDep: Service = new Service {
+    override val pureDep: Service[Any] = new Service[Any] {
       override def toAnswer(input: Int): Answer = Answer(input.toString)
     }
   }
 
-  def withPureDep[A](a: A)(implicit ev: A Mix PureDep): A with PureDep = {
-    class Instance(@delegate underlying: Any) extends Live
-    ev.mix(a, new Instance(a))
-  }
+  object Live extends Live
 }

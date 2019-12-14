@@ -4,7 +4,6 @@ import com.typesafe.config.{Config, ConfigFactory}
 import zio.system
 import zio.system.System
 import zio.ZIO
-import zio.delegate.{Mix, delegate}
 
 /** Different service environments (determining its configuration) */
 sealed trait ServiceEnvironment
@@ -38,6 +37,10 @@ object Options {
 /** Service specific service mixin. We have to use this currently as zio-delegate cannot deal with parametric types */
 trait ServiceSpecificOptions extends Options[ServiceOptions] {
   val options: ServiceOptions
+}
+
+object ServiceSpecificOptions {
+  case class Static(override val options: ServiceOptions) extends ServiceSpecificOptions
 }
 
 /** Service specific options */
@@ -78,14 +81,6 @@ object ServiceOptions {
       envSpecificConfig <- ZIO.effect(ConfigFactory.load("test"))
       finalConfig = baseConfig.withFallback(envSpecificConfig)
     } yield new ConfiguredServiceOptions(finalConfig, Local)
-
-  /** Mixin function */
-  def withServiceOptions[A](a: A, opt: ServiceOptions)(implicit ev: A Mix ServiceSpecificOptions): A with ServiceSpecificOptions = {
-    class Instance(@delegate underlying: Any) extends ServiceSpecificOptions {
-      override val options: ServiceOptions = opt
-    }
-    ev.mix(a, new Instance(a))
-  }
 
   /** Helper to access the options from the environment */
   def options: ZIO[ServiceSpecificOptions, Nothing, ServiceOptions] = ZIO.environment[ServiceSpecificOptions].map(_.options)

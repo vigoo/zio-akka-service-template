@@ -1,11 +1,8 @@
 package com.prezi.services.demo.dependencies
 
-import com.prezi.services.demo.{OptionsSupport, TestContextSupport, ZioSupport}
-import com.prezi.services.demo.config.{ServiceOptions, ServiceSpecificOptions}
-import com.prezi.services.demo.core.AkkaContext
 import com.prezi.services.demo.model.Answer
+import com.prezi.services.demo.{OptionsSupport, TestContextSupport, ZioSupport}
 import org.specs2.mutable.SpecificationWithJUnit
-import zio.delegate._
 import zio.ZIO
 
 class ZioDepSpecs
@@ -27,9 +24,9 @@ class ZioDepSpecs
     }
   }
 
-  private def withDep[T](f: ZioDep.Service => ZIO[BaseEnvironment with PureDep with ZioDep, Throwable, T]): ZIO[BaseEnvironment, Throwable, T] =
-    withPureDepBasedDep[T, ZioDep, ZioDep.Service](
-      ZioDep.withZioDep[BaseEnvironment with ServiceSpecificOptions with AkkaContext with PureDep],
+  private def withDep[T](f: ZioDep.Service[Any] => ZIO[BaseEnvironment with PureDep with ZioDep, Throwable, T]): ZIO[BaseEnvironment, Throwable, T] =
+    withPureDepBasedDep[T, ZioDep, ZioDep.Service[Any]](
+      ZioDep.Live.create,
       _.zioDep
     )(defaultOptions)(f)
 }

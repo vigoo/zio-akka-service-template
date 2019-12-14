@@ -2,41 +2,54 @@ package com.prezi.services.demo.core
 
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.adapter._
-import akka.stream.Materializer
-import zio.ZIO
-import zio.delegate._
+import cats.instances.string._
+import com.prezi.services.demo.Main.logFatalError
+import com.prezi.services.demo.config.ServiceOptions._
+import com.prezi.services.demo.config.{ServiceOptions, ServiceSpecificOptions}
+import zio.{ZIO, ZManaged}
+import zio.console.Console
+import zio.interop.catz.console
 
 import scala.concurrent.ExecutionContext
 
 /** Akka specific contextual values */
 trait AkkaContext {
   val actorSystem: ActorSystem[_]
-  val materializer: Materializer
 }
 
-/** All global contextual values */
-trait Context extends AkkaContext
+object AkkaContext {
 
-object Context {
+  object Default {
+    private val create: ZIO[ServiceSpecificOptions, Nothing, AkkaContext] =
+      for {
+        opts <- options
+      } yield new AkkaContext {
+        override val actorSystem: ActorSystem[_] = akka.actor.ActorSystem("service", opts.config).toTyped
+      }
 
-  /** Mixin function */
-  def withAkkaContext[A](a: A, sys: ActorSystem[_], mat: Materializer)
-                        (implicit ev: A Mix AkkaContext): A with AkkaContext = {
-    class Instance(@delegate underlying: Any) extends AkkaContext {
-      override val actorSystem: ActorSystem[_] = sys
-      override val materializer: Materializer = mat
+    private def terminate(context: AkkaContext): ZIO[Console, Nothing, Unit] = {
+      console.putStrLn("Terminating actor system").flatMap { _ =>
+        ZIO
+          .fromFuture { implicit ec =>
+            context.actorSystem.toClassic.terminate()
+          }
+          .unit
+          .catchAll(logFatalError)
+      }
     }
-    ev.mix(a, new Instance(a))
+
+    private def logFatalError(reason: Throwable): ZIO[Console, Nothing, Unit] =
+      console.putStrLn(s"Fatal init/shutdown error: ${reason.getMessage}") // TODO: use logging system instead
+
+    val managed = ZManaged.make[Console with ServiceSpecificOptions, Throwable, AkkaContext](create)(terminate)
   }
 
   // Helper functions to access contextual values from the environment
 
   def actorSystem: ZIO[AkkaContext, Nothing, ActorSystem[_]] =
     ZIO.environment[AkkaContext].map(_.actorSystem)
-  def untypedActorSystem: ZIO[AkkaContext, Nothing, akka.actor.ActorSystem] =
-    actorSystem.map(_.toUntyped)
-  def materializer: ZIO[AkkaContext, Nothing, Materializer] =
-    ZIO.environment[AkkaContext].map(_.materializer)
+  def classicActorSystem: ZIO[AkkaContext, Nothing, akka.actor.ActorSystem] =
+    actorSystem.map(_.toClassic)
   def actorExecutionContext: ZIO[AkkaContext, Nothing, ExecutionContext] =
     actorSystem.map(_.executionContext)
 }

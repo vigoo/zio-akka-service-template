@@ -1,5 +1,7 @@
 package com.prezi.services.demo.api
 
+import akka.actor.typed
+import akka.actor.typed.ActorSystem
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server._
@@ -25,7 +27,7 @@ trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
   // dependencies
   val random: Random.Service[Any]
   implicit val interop: Interop[Main.FinalEnvironment]
-  implicit val materializer: Materializer
+  val actorSystem: typed.ActorSystem[_]
 
   val streamingRoute: Route =
     path("streaming") {
@@ -55,11 +57,13 @@ trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
         extractDataBytes { bodyStream =>
 
           // Defining the ZIO sink that produces the result for the response (counts its length)
-          val zioSink = zio.stream.Sink.foldLeft[Nothing, Chunk[Byte], Int](0)((sum, chunk) => sum + chunk.length)
+          val zioSink = zio.stream.Sink.foldLeft[Chunk[Byte], Int](0)((sum, chunk) => sum + chunk.length)
+
+          implicit val sys: ActorSystem[_] = actorSystem
 
           // Defining the ZIO effect to create the Akka-HTTP response by running the Akka-HTTP request stream into
           // the ZIO sink.
-          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().flatMap { case (subscriber, result) =>
+          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().use { case (subscriber, result) =>
             val akkaSink = akka.stream.scaladsl.Sink.fromSubscriber(subscriber)
             bodyStream
               .map(_.toChunk)
