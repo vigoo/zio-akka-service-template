@@ -4,7 +4,8 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import com.prezi.services.demo.core.Interop
 import com.prezi.services.demo.core.Interop._
-import com.prezi.services.demo.dependencies.{PureDep, ZioDep}
+import com.prezi.services.demo.dependencies.pureDep.PureDep
+import com.prezi.services.demo.dependencies.zioDep.ZioDep
 import com.prezi.services.demo.model.Answer
 import zio.ZIO
 
@@ -27,7 +28,7 @@ class TestActor(env: TestActor.Environment) // Subset of the ZIO environment req
       msg match {
         case Question(input, respondTo) =>
           // ZIO value is evaluated concurrently and the result is sent back to the actor as a message
-          env.zioDep.provideAnswer(input).pipeTo(ctx.self, AnswerReady(_, respondTo))
+          env.get[ZioDep.Service].provideAnswer(input).pipeTo(ctx.self, AnswerReady(_, respondTo))
           Behaviors.same
 
         case AnswerReady(result, respondTo) =>

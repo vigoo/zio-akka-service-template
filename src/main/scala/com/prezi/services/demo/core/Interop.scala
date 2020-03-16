@@ -5,6 +5,7 @@ import akka.actor.typed.scaladsl.adapter._
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.{ByteString, Timeout}
 import cats.effect.IO
+import com.prezi.services.demo.core.context.AkkaContext
 import zio.{Chunk, Runtime, ZIO, clock}
 import zio.clock.Clock
 

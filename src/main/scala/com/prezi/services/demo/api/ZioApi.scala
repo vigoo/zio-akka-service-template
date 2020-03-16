@@ -5,7 +5,7 @@ import akka.http.scaladsl.server._
 import com.prezi.services.demo.Main
 import com.prezi.services.demo.api.directives.ZioDirectives
 import com.prezi.services.demo.core.Interop
-import com.prezi.services.demo.dependencies.ZioDep
+import com.prezi.services.demo.dependencies.zioDep.ZioDep
 import de.heikoseeberger.akkahttpcirce.BaseCirceSupport
 
 import scala.util.{Failure, Success}
@@ -18,7 +18,7 @@ trait ZioApi extends ZioDirectives[Main.FinalEnvironment] {
 
   // dependencies
   implicit val interop: Interop[Main.FinalEnvironment]
-  val zioDep: ZioDep.Service[Any]
+  val zioDep: ZioDep.Service
 
   val zioRoute: Route =
     path("zio") {
