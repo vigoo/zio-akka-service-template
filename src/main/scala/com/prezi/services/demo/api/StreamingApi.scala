@@ -12,7 +12,7 @@ import com.prezi.services.demo.api.directives.ZioDirectives
 import com.prezi.services.demo.core.Interop
 import com.prezi.services.demo.core.Interop._
 import zio._
-import zio.interop.reactiveStreams._
+import zio.interop.reactivestreams._
 import zio.random.Random
 import zio.stream._
 
@@ -25,7 +25,7 @@ trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
   this: ErrorResponses =>
 
   // dependencies
-  val random: Random.Service[Any]
+  val random: Random.Service
   implicit val interop: Interop[Main.FinalEnvironment]
   val actorSystem: typed.ActorSystem[_]
 
@@ -63,7 +63,7 @@ trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
 
           // Defining the ZIO effect to create the Akka-HTTP response by running the Akka-HTTP request stream into
           // the ZIO sink.
-          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().use { case (subscriber, result) =>
+          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().flatMap { case (subscriber, result) =>
             val akkaSink = akka.stream.scaladsl.Sink.fromSubscriber(subscriber)
             bodyStream
               .map(_.toChunk)

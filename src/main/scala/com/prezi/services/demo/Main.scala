@@ -9,16 +9,19 @@ import com.prezi.services.demo.actors.TestActor
 import com.prezi.services.demo.api.Api
 import com.prezi.services.demo.config.ServiceOptions.options
 import com.prezi.services.demo.config.{ServiceOptions, ServiceSpecificOptions}
-import com.prezi.services.demo.core.AkkaContext._
+import com.prezi.services.demo.core.context.AkkaContext._
 import com.prezi.services.demo.core.Interop._
-import com.prezi.services.demo.core.{AkkaContext, Interop}
-import com.prezi.services.demo.dependencies.{CatsDep, FutureDep, PureDep, ZioDep}
+import com.prezi.services.demo.core.Interop
+import com.prezi.services.demo.core.context.AkkaContext
+import com.prezi.services.demo.dependencies.catsDep.CatsDep
+import com.prezi.services.demo.dependencies.futureDep.FutureDep
+import com.prezi.services.demo.dependencies.pureDep.PureDep
+import com.prezi.services.demo.dependencies.zioDep.ZioDep
 import com.prezi.services.demo.model.Answer
 import zio._
 import zio.console.Console
 import zio.interop.catz._
 import zio.console
-import zio.macros.delegate._
 import zio.random.Random
 import zio.system.System
 
@@ -31,47 +34,41 @@ object Main extends CatsApp {
   // Final application environment
   type FinalEnvironment = ZEnv with ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
 
-  private def enrichWithServiceSpecificOptions(options: ServiceOptions): EnrichWith[ServiceSpecificOptions] = enrichWith[ServiceSpecificOptions](ServiceSpecificOptions.Static(options))
-  private val enrichWithAkkaContext = enrichWithManaged[AkkaContext](AkkaContext.Default.managed)
-  private val enrichWithPureDep = enrichWith[PureDep](PureDep.Live)
-  private val enrichWithCatsDep = enrichWithM[CatsDep](CatsDep.Live.create)
-  private val enrichWithZioDep = enrichWithM[ZioDep](ZioDep.Live.create)
-  private val enrichWithFutureDep = enrichWithM[FutureDep](FutureDep.Live.create)
-
   // Main entry point
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
     for {
       _ <- console.putStrLn("Starting up...")
       _ <- stageFinal(ServiceOptions.environmentDependentOptions) {
-          for {
-            interop <- createInterop()
-            actor <- createActor(interop)
+        for {
+          interop <- createInterop()
+          actor <- createActor(interop)
 
-            // Demonstrating ask-ing an actor from ZIO
-            testAnswer <- actor.ask[FinalEnvironment, Try[Answer]](TestActor.Question(100, _), 1.second)
-            _ <- console.putStrLn(s"Actor answered with: $testAnswer")
+          // Demonstrating ask-ing an actor from ZIO
+          testAnswer <- actor.ask[FinalEnvironment, Try[Answer]](TestActor.Question(100, _), 1.second)
+          _ <- console.putStrLn(s"Actor answered with: $testAnswer")
 
-            // Launching the akka-http server
-            api <- createHttpApi(interop, actor)
-            httpServer <- startHttpApi(api)
-            _ <- httpServer.useForever
-          } yield ()
-        }.catchAll(logFatalError)
+          // Launching the akka-http server
+          api <- createHttpApi(interop, actor)
+          httpServer <- startHttpApi(api)
+          _ <- httpServer.useForever
+        } yield ()
+      }.catchAll(logFatalError)
     } yield 0
   }
 
-  def stageFinal[A](getOptions: ZIO[System, Throwable, ServiceOptions])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
-    for {
-      options <- getOptions
-      finalEnv = ZIO.succeed(new DefaultRuntime {}.environment) @@
-        enrichWithServiceSpecificOptions(options) @@
-        enrichWithAkkaContext @@
-        enrichWithPureDep @@
-        enrichWithCatsDep @@
-        enrichWithZioDep @@
-        enrichWithFutureDep
-      result <- f.provideSomeManaged(finalEnv)
-    } yield result
+  def >>+[RIn0, E0, ROut0 <: Has[_], E1 >: E0, ROut1 <: Has[_]](layer0: ZLayer[RIn0, E0, ROut0],
+                                                                layer1: ZLayer[ROut0, E1, ROut1])
+                                                               (implicit tagged: Tagged[ROut0]): ZLayer[RIn0, E1, ROut1 with ROut0] =
+    layer0 >>> (layer1 ++ ZLayer.requires[ROut0])
+
+  def stageFinal[A](options: ZLayer[System, Throwable, ServiceSpecificOptions])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
+    val layer0 = ZEnv.live ++ PureDep.live ++ options
+    val layer1 = CatsDep.live ++ ZioDep.live ++ AkkaContext.Default.live
+    val layer2 = FutureDep.live
+
+    val finalLayer = >>+(>>+(layer0, layer1), layer2)
+
+    f.provideCustomLayer(finalLayer)
   }
 
   private def createInterop(): ZIO[FinalEnvironment, Nothing, Interop[FinalEnvironment]] =
@@ -85,26 +82,26 @@ object Main extends CatsApp {
       env <- ZIO.environment
     } yield new Api {
       override implicit val interop: Interop[FinalEnvironment] = interopImpl
-      override val zioDep: ZioDep.Service[Any] = env.zioDep
-      override val futureDep: FutureDep.Service[Any] = env.futureDep
-      override val catsDep: CatsDep.Service[Any] = env.catsDep
+      override val zioDep: ZioDep.Service = env.get[ZioDep.Service]
+      override val futureDep: FutureDep.Service = env.get[FutureDep.Service]
+      override val catsDep: CatsDep.Service = env.get[CatsDep.Service]
       override val actor: ActorRef[TestActor.Message] = testActor
-      override val actorSystem: typed.ActorSystem[_] = env.actorSystem
-      override val random: Random.Service[Any] = env.random
+      override val actorSystem: typed.ActorSystem[_] = env.get[AkkaContext.Service].actorSystem
+      override val random: Random.Service = env.get[Random.Service]
     }
   }
 
   private def startHttpApi(api: Api): ZIO[FinalEnvironment, Nothing, ZManaged[Console, Throwable, ServerBinding]] = {
     classicActorSystem.flatMap { implicit system =>
-        options.map { opt =>
-          ZManaged.make[Console, Throwable, ServerBinding] {
-            console.putStrLn("Starting HTTP server").flatMap { _ =>
-              ZIO.fromFuture { implicit ec =>
-                Http().bindAndHandle(api.route, "0.0.0.0", port = opt.port)
-              }
+      options.map { opt =>
+        ZManaged.make[Console, Console, Throwable, ServerBinding] {
+          console.putStrLn("Starting HTTP server").flatMap { _ =>
+            ZIO.fromFuture { implicit ec =>
+              Http().bindAndHandle(api.route, "0.0.0.0", port = opt.port)
             }
-          }(terminateHttpServer)
-        }
+          }
+        }(terminateHttpServer)
+      }
     }
   }
 

@@ -4,7 +4,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server._
 import com.prezi.services.demo.Main
 import com.prezi.services.demo.core.Interop
-import com.prezi.services.demo.dependencies.CatsDep
+import com.prezi.services.demo.dependencies.catsDep.CatsDep
 import de.heikoseeberger.akkahttpcirce.BaseCirceSupport
 
 import scala.util.{Failure, Success}
@@ -18,7 +18,7 @@ trait CatsApi {
   implicit val interop: Interop[Main.FinalEnvironment]
 
   // dependencies
-  val catsDep: CatsDep.Service[Any]
+  val catsDep: CatsDep.Service
 
   val catsRoute: Route =
     path("cats") {

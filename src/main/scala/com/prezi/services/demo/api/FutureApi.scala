@@ -2,7 +2,7 @@ package com.prezi.services.demo.api
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server._
-import com.prezi.services.demo.dependencies.FutureDep
+import com.prezi.services.demo.dependencies.futureDep.FutureDep
 import de.heikoseeberger.akkahttpcirce.BaseCirceSupport
 
 import scala.util.{Failure, Success}
@@ -14,7 +14,7 @@ trait FutureApi {
   this: ErrorResponses with BaseCirceSupport =>
 
   // dependencies
-  val futureDep: FutureDep.Service[Any]
+  val futureDep: FutureDep.Service
 
   val futureRoute: Route =
     path("future") {
