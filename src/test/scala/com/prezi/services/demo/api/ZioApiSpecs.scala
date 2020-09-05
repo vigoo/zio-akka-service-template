@@ -1,19 +1,20 @@
 package com.prezi.services.demo.api
 
 import akka.http.scaladsl.model.StatusCodes
+import com.prezi.services.demo.Main.ServiceLayers
 import com.prezi.services.demo.actors.TestActor
 import com.prezi.services.demo.core.Interop
 import com.prezi.services.demo.core.Interop._
 import com.prezi.services.demo.core.context.AkkaContext.actorSystem
 import com.prezi.services.demo.model.Answer
-import com.prezi.services.demo.{Main, serviceconfig}
+import com.prezi.services.demo.{Main, TestLogging, serviceconfig}
 import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
 import zio._
 import zio.console.Console
 import zio.test.Assertion._
 import zio.test._
 
-object ZioApiSpecs extends DefaultRunnableSpec with ServiceSpecs[Console, Main.ServiceLayers, Api] {
+object ZioApiSpecs extends DefaultRunnableSpec with ServiceSpecs[Console, Main.ServiceLayers, Api] with TestLogging {
   override def implicits = ServiceSpecs.implicits
 
   override def createApi =
@@ -38,7 +39,6 @@ object ZioApiSpecs extends DefaultRunnableSpec with ServiceSpecs[Console, Main.S
     )
   }
 
-  override def testEnv = Main
-    .liveServiceEnvironment(serviceconfig.test)
-    .mapError(TestFailure.fail)
+  override def testEnv: ZLayer[Console, TestFailure[Throwable], ServiceLayers] =
+    (Console.any ++ logging) >>> Main.liveServiceEnvironment(serviceconfig.test).mapError(TestFailure.fail)
 }

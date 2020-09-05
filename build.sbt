@@ -27,6 +27,11 @@ libraryDependencies ++= Seq(
   "dev.zio" %% "zio-config" % "1.0.0-RC26",
   "dev.zio" %% "zio-config-typesafe" % "1.0.0-RC26",
   "dev.zio" %% "zio-config-magnolia" % "1.0.0-RC26",
+  "dev.zio" %% "zio-logging-slf4j" % "0.5.0",
+
+  "org.apache.logging.log4j" % "log4j-core" % "2.13.3",
+  "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.13.3",
+  "com.lmax" % "disruptor" % "3.4.2",
 
   "io.circe" %% "circe-core" % "0.13.0",
   "io.circe" %% "circe-generic" % "0.13.0",

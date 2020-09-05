@@ -49,7 +49,7 @@ package object serviceconfig {
     ) ?? "Configures the environment the service runs in"
 
   val serviceEnvironment: ZLayer[System, Throwable, ZConfig[ServiceEnvironment]] =
-    ZConfig.fromSystemEnv(environmentConfig)
+    ZConfig.fromSystemProperties(environmentConfig)
 
   val environmentDependentConfigSource: ZLayer[ZConfig[ServiceEnvironment], Throwable, Has[Config]] =
     ZLayer.fromServiceM { env =>

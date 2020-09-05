@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<Configuration status="ERROR">
+    <Appenders>
+        <Console name="CONSOLE" target="SYSTEM_OUT">
+            <PatternLayout pattern= "%-5p [%t]: %m%n" />
+        </Console>
+    </Appenders>
+    <Loggers>
+        <AsyncRoot level="DEBUG">
+            <AppenderRef ref="CONSOLE"/>
+        </AsyncRoot>
+    </Loggers>
+</Configuration>

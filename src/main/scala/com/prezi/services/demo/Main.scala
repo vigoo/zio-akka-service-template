@@ -20,6 +20,8 @@ import com.prezi.services.demo.serviceconfig.{Configuration, TypesafeZConfig, se
 import zio._
 import zio.config.{ZConfig, config}
 import zio.console.Console
+import zio.logging._
+import zio.logging.slf4j.Slf4jLogger
 import zio.random.Random
 import zio.system.System
 
@@ -29,19 +31,26 @@ import scala.util.Try
 object Main extends App {
   private val terminateDeadline: FiniteDuration = 10.seconds
 
-  type ServiceLayers = TypesafeZConfig[Configuration] with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
+  type ServiceLayers = Logging with TypesafeZConfig[Configuration] with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
   type FinalEnvironment = ZEnv with ServiceLayers
 
-  def liveServiceEnvironment[RIn <: Has[_]](options: ZLayer[RIn, Throwable, TypesafeZConfig[Configuration]]): ZLayer[RIn with Console, Throwable, ServiceLayers] = {
-    (options ++ PureDep.live ++ Console.any) >+>
+  def liveServiceEnvironment[RIn](options: ZLayer[RIn, Throwable, TypesafeZConfig[Configuration]]): ZLayer[RIn with Console with Logging, Throwable, ServiceLayers] = {
+    (options ++ PureDep.live ++ Console.any ++ ZLayer.requires[Logging]) >+>
       AkkaContext.Default.live >+>
       (FutureDep.live ++ CatsDep.live ++ ZioDep.live)
   }
 
   // Main entry point
   override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] = {
-    for {
-      _ <- console.putStrLn("Starting up...")
+    val logging = Slf4jLogger.make { (context, message) =>
+      val correlationId = LogAnnotation.CorrelationId.render(
+        context.get(LogAnnotation.CorrelationId)
+      )
+      s"[$correlationId] $message"
+    }
+
+    val main = for {
+      _ <- log.info("Starting up...")
       _ <- inServiceEnvironment(serviceconfig.live) {
         for {
           interop <- createInterop()
@@ -49,7 +58,7 @@ object Main extends App {
 
           // Demonstrating ask-ing an actor from ZIO
           testAnswer <- actor.ask[FinalEnvironment, Try[Answer]](TestActor.Question(100, _), 1.second)
-          _ <- console.putStrLn(s"Actor answered with: $testAnswer")
+          _ <- log.info(s"Actor answered with: $testAnswer")
 
           // Launching the akka-http server
           api <- createHttpApi(interop, actor)
@@ -58,10 +67,12 @@ object Main extends App {
         } yield ()
       }.catchAll(logFatalError)
     } yield ExitCode.success
+
+    main.provideCustomLayer(logging)
   }
 
-  def inServiceEnvironment[A](options: ZLayer[System, Throwable, TypesafeZConfig[Configuration]])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
-    f.provideCustomLayer(liveServiceEnvironment(options))
+  def inServiceEnvironment[A](options: ZLayer[System, Throwable, TypesafeZConfig[Configuration]])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv with Logging, Throwable, A] = {
+    f.provideSomeLayer[ZEnv with Logging](liveServiceEnvironment(options))
   }
 
   private def createInterop(): ZIO[FinalEnvironment, Nothing, Interop[FinalEnvironment]] =
@@ -82,14 +93,14 @@ object Main extends App {
     }
   }
 
-  private def startHttpApi(api: Api): ZIO[FinalEnvironment, Nothing, ZManaged[Console, Throwable, ServerBinding]] = {
+  private def startHttpApi(api: Api): ZIO[FinalEnvironment, Nothing, ZManaged[Logging, Throwable, ServerBinding]] = {
     for {
       system <- classicActorSystem
       opt <- config[Configuration]
       create = {
         implicit val sys = system
         for {
-          _ <- console.putStrLn("Starting HTTP server")
+          _ <- log.info("Starting HTTP server")
           result <- ZIO.fromFuture { implicit ec =>
             Http()
               .newServerAt("0.0.0.0", port = opt.http.port)
@@ -100,9 +111,9 @@ object Main extends App {
     } yield ZManaged.make(create)(terminateHttpServer)
   }
 
-  private def terminateHttpServer(binding: ServerBinding): ZIO[Console, Nothing, Unit] =
+  private def terminateHttpServer(binding: ServerBinding): ZIO[Logging, Nothing, Unit] =
     for {
-      _ <- console.putStrLn("Terminating http server")
+      _ <- log.info("Terminating http server")
       _ <-
         ZIO.fromFuture { implicit ec =>
           binding.terminate(hardDeadline = terminateDeadline)
@@ -115,6 +126,6 @@ object Main extends App {
       actor <- system.spawn(TestActor.create(), "test-actor")
     } yield actor
 
-  private def logFatalError(reason: Throwable): ZIO[Console, Nothing, Unit] =
-    console.putStrLn(s"Fatal init/shutdown error: ${reason.getMessage}") // TODO: use logging system instead
+  private def logFatalError(reason: Throwable): ZIO[Logging, Nothing, Unit] =
+    log.error(s"Fatal init/shutdown error: ${reason.getMessage}")
 }
