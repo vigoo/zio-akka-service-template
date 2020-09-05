@@ -31,14 +31,26 @@ import scala.util.Try
 object Main extends CatsApp {
   private val terminateDeadline: FiniteDuration = 10.seconds
 
-  // Final application environment
-  type FinalEnvironment = ZEnv with ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
+  trait A
+  trait B
+  val layer1: ULayer[Has[A]]
+  def f(in: A): UIO[B]
+  val layer2: ULayer[Has[B]] = layer1 >>> ZIO.service[A].flatMap(f).toLayer
+
+  type ServiceLayers = ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
+  type FinalEnvironment = ZEnv with ServiceLayers
+
+  def liveServiceEnvironment[RIn <: Has[_]](options: ZLayer[RIn, Throwable, ServiceSpecificOptions]): ZLayer[RIn with Console, Throwable, ServiceLayers] = {
+    (options ++ PureDep.live ++ Console.any) >+>
+      AkkaContext.Default.live >+>
+      (FutureDep.live ++ CatsDep.live ++ ZioDep.live)
+  }
 
   // Main entry point
-  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
+  override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] = {
     for {
       _ <- console.putStrLn("Starting up...")
-      _ <- stageFinal(ServiceOptions.environmentDependentOptions) {
+      _ <- inServiceEnvironment(ServiceOptions.environmentDependentOptions) {
         for {
           interop <- createInterop()
           actor <- createActor(interop)
@@ -53,28 +65,15 @@ object Main extends CatsApp {
           _ <- httpServer.useForever
         } yield ()
       }.catchAll(logFatalError)
-    } yield 0
+    } yield ExitCode.success
   }
 
-  def >>+[RIn0, E0, ROut0 <: Has[_], E1 >: E0, ROut1 <: Has[_]](layer0: ZLayer[RIn0, E0, ROut0],
-                                                                layer1: ZLayer[ROut0, E1, ROut1])
-                                                               (implicit tagged: Tagged[ROut0]): ZLayer[RIn0, E1, ROut1 with ROut0] =
-    layer0 >>> (layer1 ++ ZLayer.requires[ROut0])
-
-  def stageFinal[A](options: ZLayer[System, Throwable, ServiceSpecificOptions])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
-    val layer0 = ZEnv.live ++ PureDep.live ++ options
-    val layer1 = CatsDep.live ++ ZioDep.live ++ AkkaContext.Default.live
-    val layer2 = FutureDep.live
-
-    val finalLayer = >>+(>>+(layer0, layer1), layer2)
-
-    f.provideCustomLayer(finalLayer)
+  def inServiceEnvironment[A](options: ZLayer[System, Throwable, ServiceSpecificOptions])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
+    f.provideCustomLayer(liveServiceEnvironment(options))
   }
 
   private def createInterop(): ZIO[FinalEnvironment, Nothing, Interop[FinalEnvironment]] =
-    ZIO.environment[FinalEnvironment].map { env =>
-      Interop.create(Runtime(env, runtime.platform))
-    }
+    ZIO.runtime.map(Interop.create)
 
   def createHttpApi(interopImpl: Interop[FinalEnvironment],
                     testActor: ActorRef[TestActor.Message]): ZIO[FinalEnvironment, Nothing, Api] = {
@@ -92,29 +91,31 @@ object Main extends CatsApp {
   }
 
   private def startHttpApi(api: Api): ZIO[FinalEnvironment, Nothing, ZManaged[Console, Throwable, ServerBinding]] = {
-    classicActorSystem.flatMap { implicit system =>
-      options.map { opt =>
-        ZManaged.make[Console, Console, Throwable, ServerBinding] {
-          console.putStrLn("Starting HTTP server").flatMap { _ =>
-            ZIO.fromFuture { implicit ec =>
-              Http().bindAndHandle(api.route, "0.0.0.0", port = opt.port)
-            }
+    for {
+      system <- classicActorSystem
+      opt <- options
+      create = {
+        implicit val sys = system
+        for {
+          _ <- console.putStrLn("Starting HTTP server")
+          result <- ZIO.fromFuture { implicit ec =>
+            Http()
+              .newServerAt("0.0.0.0", port = opt.port)
+              .bindFlow(api.route)
           }
-        }(terminateHttpServer)
+        } yield result
       }
-    }
+    } yield ZManaged.make(create)(terminateHttpServer)
   }
 
-  private def terminateHttpServer(binding: ServerBinding): ZIO[Console, Nothing, Unit] = {
-    console.putStrLn("Terminating http server").flatMap { _ =>
-      ZIO
-        .fromFuture { implicit ec =>
+  private def terminateHttpServer(binding: ServerBinding): ZIO[Console, Nothing, Unit] =
+    for {
+      _ <- console.putStrLn("Terminating http server")
+      _ <-
+        ZIO.fromFuture { implicit ec =>
           binding.terminate(hardDeadline = terminateDeadline)
-        }
-        .unit
-        .catchAll(logFatalError)
-    }
-  }
+        }.unit.catchAll(logFatalError)
+    } yield ()
 
   private def createActor(implicit interop: Interop[Main.FinalEnvironment]): ZIO[FinalEnvironment, Throwable, ActorRef[TestActor.Message]] =
     for {

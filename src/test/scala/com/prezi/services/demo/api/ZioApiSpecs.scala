@@ -1,22 +1,45 @@
-//package com.prezi.services.demo.api
-//
-//import akka.http.scaladsl.model.StatusCodes
-//import com.prezi.services.demo.model.Answer
-//import zio.ZIO
-//
-//class ZioApiSpecs extends ServiceSpecs {
-//  "Zio API" should {
-//    "return the correct answer" in {
-//      run {
-//        withApi { api =>
-//          ZIO {
-//            Get("/zio?input=111") ~> api.route ~> check {
-//              status must beEqualTo(StatusCodes.OK)
-//              responseAs[Answer] must beEqualTo(Answer("111"))
-//            }
-//          }
-//        }
-//      }
-//    }
-//  }
-//}
+package com.prezi.services.demo.api
+
+import akka.http.scaladsl.model.StatusCodes
+import com.prezi.services.demo.Main
+import com.prezi.services.demo.actors.TestActor
+import com.prezi.services.demo.config._
+import com.prezi.services.demo.core.Interop
+import com.prezi.services.demo.core.Interop._
+import com.prezi.services.demo.core.context.AkkaContext.actorSystem
+import com.prezi.services.demo.model.Answer
+import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
+import zio.console.Console
+import zio.test.Assertion._
+import zio.test._
+import zio._
+
+object ZioApiSpecs extends DefaultRunnableSpec with ServiceSpecs[Console, Main.ServiceLayers, Api] {
+  override def implicits = ServiceSpecs.implicits
+
+  override def createApi =
+    (for {
+      runtime <- ZIO.runtime[Main.FinalEnvironment]
+      interop = Interop.create(runtime)
+      system <- actorSystem
+      actor <- system.spawn(TestActor.create()(interop), "test-actor")
+      api <- Main.createHttpApi(interop, actor)
+    } yield api).mapError(TestFailure.die)
+
+  override def routeTests = (api: Api) => new RouteTests with FailFastCirceSupport {
+    val spec: Vector[ZSpec[Main.FinalEnvironment, Throwable]] = Vector(
+      testM("return the correct answer") {
+        ZIO.effect {
+          Get("/zio?input=111") ~> api.route ~> check {
+            assert(status)(equalTo(StatusCodes.OK)) &&
+              assert(responseAs[Answer])(equalTo(Answer("111")))
+          }
+        }
+      }
+    )
+  }
+
+  override def testEnv = Main
+    .liveServiceEnvironment(ServiceOptions.defaultTestOptions)
+    .mapError(TestFailure.fail)
+}

@@ -25,11 +25,13 @@ package object futureDep {
       }
     }
 
-    val live: ZLayer[PureDep with AkkaContext, Nothing, FutureDep] =
+    val live: ZLayer[PureDep with AkkaContext, Nothing, FutureDep] = {
       ZLayer.fromServiceM { pureDep =>
         for {
           ec <- AkkaContext.actorExecutionContext
         } yield new Live(pureDep)(ec)
       }
+    }
+    val any: ZLayer[FutureDep, Nothing, FutureDep] = ZLayer.requires[FutureDep]
   }
 }

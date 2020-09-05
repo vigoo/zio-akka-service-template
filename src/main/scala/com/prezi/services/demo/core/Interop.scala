@@ -24,7 +24,7 @@ trait Interop[+R] {
 }
 
 object Interop {
-  // Creates an implementation based on a ZIO runtime, should be used from the Main when the final stage is ready
+  // Creates an implementation based on a ZIO runtime
   def create[R](runtime: Runtime[R]): Interop[R] =
     new Interop[R] {
       override def ioToFuture[A](f: IO[A]): Future[A] =

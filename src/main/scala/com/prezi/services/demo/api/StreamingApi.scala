@@ -5,7 +5,6 @@ import akka.actor.typed.ActorSystem
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server._
-import akka.stream.Materializer
 import akka.stream.scaladsl._
 import com.prezi.services.demo.Main
 import com.prezi.services.demo.api.directives.ZioDirectives
@@ -63,7 +62,7 @@ trait StreamingApi extends ZioDirectives[Main.FinalEnvironment] {
 
           // Defining the ZIO effect to create the Akka-HTTP response by running the Akka-HTTP request stream into
           // the ZIO sink.
-          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().flatMap { case (subscriber, result) =>
+          val createResponse: IO[Throwable, HttpResponse] = zioSink.toSubscriber().use { case (subscriber, result) =>
             val akkaSink = akka.stream.scaladsl.Sink.fromSubscriber(subscriber)
             bodyStream
               .map(_.toChunk)
