@@ -20,22 +20,14 @@ import com.prezi.services.demo.dependencies.zioDep.ZioDep
 import com.prezi.services.demo.model.Answer
 import zio._
 import zio.console.Console
-import zio.interop.catz._
-import zio.console
 import zio.random.Random
 import zio.system.System
 
 import scala.concurrent.duration._
 import scala.util.Try
 
-object Main extends CatsApp {
+object Main extends App {
   private val terminateDeadline: FiniteDuration = 10.seconds
-
-  trait A
-  trait B
-  val layer1: ULayer[Has[A]]
-  def f(in: A): UIO[B]
-  val layer2: ULayer[Has[B]] = layer1 >>> ZIO.service[A].flatMap(f).toLayer
 
   type ServiceLayers = ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
   type FinalEnvironment = ZEnv with ServiceLayers
