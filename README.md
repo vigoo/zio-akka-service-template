@@ -18,97 +18,11 @@ This example implements the following goals:
 In the README I will highlight some parts of the example but see the source code for the full example.
 
 ## Bootstrap
+
+TODO: rewrite this part with info about layers
  
-The dependencies follow the _module pattern_ of ZIO (except that for non-ZIO dependencies we don't need the environment type parameter), for example:
-
-```scala
-trait PureDep {
-  val pureDep: PureDep.Service
-}
-
-object PureDep {
-  trait Service {
-    def toAnswer(input: Int): Answer
-  }
-
-  trait Live extends PureDep {
-    override val pureDep: Service = new Service {
-      override def toAnswer(input: Int): Answer = Answer(input.toString)
-    }
-  }
-}
-
-@accessible(">")
-trait ZioDep {
-  val zioDep: ZioDep.Service[Any]
-}
-
-object ZioDep {
-
-  trait Service[R] {
-    def provideAnswer(input: Int): ZIO[R, Throwable, Answer]
-  }
-
-  class Live(pureDep: PureDep.Service) extends ZioDep {
-    override val zioDep: Service[Any] = new Service[Any] {
-      override def provideAnswer(input: Int): ZIO[Any, Throwable, Answer] =
-        ZIO.effect(pureDep.toAnswer(input))
-    }
-  }
-
-  object Live {
-    val create: ZIO[PureDep, Nothing, ZioDep] =
-      ZIO.environment[PureDep].map(env => new Live(env.pureDep))
-  }
-}
-```
-
-In this style, `PureDep` is the mixin that adds a `pureDep` field to the final environment, 
-`PureDep.Service` is the dependency's interface, and `Live` is the default implementation for production.
-
-The ZIO application entry point defines a default environment that consists of:
-
-```scala
-Clock with Console with System with Random with Blocking
-```
-
-Instead of overriding this, we can build the final environment incrementally with the help of `zio-macros` where each dependency 
-can use the already created ones.
-
-In the example we define the following final environment:
-
-```scala
-type FinalEnvironment = ZEnv with ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
-```
-
-Here the `CatsDep`, `ZioDep` and `FutureDep` examples are all depending on `PureDep`. 
-
 The `main` function builds up the environment, then creates the service API handler and a test actor and 
 runs the service.
-
-### Incremental environment building
-To build the environment we define an _enricher_ for each, such as:
-
-```scala
-private val enrichWithAkkaContext = enrichWithManaged[AkkaContext](AkkaContext.Default.managed)
-private val enrichWithZioDep = enrichWithM[ZioDep](ZioDep.Live.create)
-``` 
-
-then we initialize all with the `@@` operator:
-
-```scala
-for {
-  options <- getOptions
-  finalEnv = ZIO.succeed(new DefaultRuntime {}.environment) @@
-    enrichWithServiceSpecificOptions(options) @@
-    enrichWithAkkaContext @@
-    enrichWithPureDep @@
-    enrichWithCatsDep @@
-    enrichWithZioDep @@
-    enrichWithFutureDep
-  result <- f.provideSomeManaged(finalEnv)
-} yield result
-```
 
 ## Context
 One of the dependencies is `AkkaContext`. This holds the actor system for Akka (note that a materializer is no longer needed as it is tied to the system since Akka 2.6).
@@ -205,7 +119,7 @@ Akka-HTTP is integrated in a very similar way. Dependencies are injected by havi
 
 ```scala
 def createHttpApi(interopImpl: Interop[FinalEnvironment],
-                    testActor: ActorRef[TestActor.Message]): ZIO[FinalEnvironment, Nothing, Api]
+                  testActor: ActorRef[TestActor.Message]): ZIO[FinalEnvironment, Nothing, Api]
 ```
 
 `Api` uses the structure that we are using in our current Akka-HTTP services too where different route fragments are
@@ -294,22 +208,6 @@ The opposite direction is similar, handling an incoming request in a ZIO stream:
 ## Options
 Service options are still based on the Lightbend `config` library as it is used for Akka and other Akka based libraries.
 It is loaded as a ZIO effect though and provided to other parts of the application as part of the ZIO environment.
-
-## Testing with specs2
-The project provides examples for testing all the previously mentioned cases:
-
-`ZioSupport` trait provides support to run ZIO effects in specs2 tests. The `TestContextSupport` and `OptionsSupport`
-traits are adding `withXXX` style helper functions to incrementally build a partial ZIO environment to run tests with
-akka and options support. 
-
-The tests for the individual dependencies are using these and define a common helper called `DepSpecsHelper` for the ones
-that are depending on `PureDep` (demonstrating how to create service-specific common helper traits for testing).
-
-Route tests require building up the full environment (for `createHttpApi`) for this the `ServiceSpecs` base class uses
-the same stage building functions from `Main` as the real application bootstrap.
-
-Similarly to test actors we need to build a partial environment at least as the actors are supposed to be created within
-ZIO effects for proper dependency injection.
  
 ## Testing with zio-test
 TODO

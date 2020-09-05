@@ -30,24 +30,20 @@ package object context {
         }
 
       private def terminate(context: AkkaContext.Service): ZIO[Console, Nothing, Any] = {
-        console.putStrLn("Terminating actor system").flatMap { _ =>
+        console.putStrLn("Terminating actor system") *>
           ZIO
             .fromFuture { implicit ec =>
               context.actorSystem.toClassic.terminate()
             }
             .unit
             .catchAll(logFatalError)
-        }
       }
 
       private def logFatalError(reason: Throwable): ZIO[Console, Nothing, Unit] =
         console.putStrLn(s"Fatal init/shutdown error: ${reason.getMessage}") // TODO: use logging system instead
 
-      // val managed = ZManaged.make[Console with ServiceSpecificOptions, Console with ServiceSpecificOptions, Throwable, AkkaContext](create)(terminate)
       val live: ZLayer[Console with ServiceSpecificOptions, Throwable, AkkaContext] =
-        ZLayer.fromManaged(
-          ZManaged.make[ServiceSpecificOptions, ServiceSpecificOptions with Console, Throwable, AkkaContext.Service](create)(terminate(_))
-        )
+        ZLayer.fromManaged(ZManaged.make(create)(terminate))
 
       val any: ZLayer[AkkaContext, Nothing, AkkaContext] = ZLayer.requires[AkkaContext]
     }
@@ -55,7 +51,7 @@ package object context {
     // Helper functions to access contextual values from the environment
 
     def actorSystem: ZIO[AkkaContext, Nothing, ActorSystem[_]] =
-      ZIO.environment[AkkaContext].map(_.get.actorSystem)
+      ZIO.access(_.get.actorSystem)
 
     def classicActorSystem: ZIO[AkkaContext, Nothing, akka.actor.ActorSystem] =
       actorSystem.map(_.toClassic)

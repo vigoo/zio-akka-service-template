@@ -1,32 +1,56 @@
-//package com.prezi.services.demo.api
-//
-//import akka.http.scaladsl.testkit.Specs2RouteTest
-//import com.prezi.services.demo.Main.FinalEnvironment
-//import com.prezi.services.demo.actors.TestActor
-//import com.prezi.services.demo.core.context.AkkaContext.actorSystem
-//import com.prezi.services.demo.core.Interop._
-//import com.prezi.services.demo.{Main, OptionsSupport, TestContextSupport, ZioSupport}
-//import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
-//import org.specs2.mutable.SpecificationWithJUnit
-//import zio.ZIO
-//
-//abstract class ServiceSpecs
-//  extends SpecificationWithJUnit
-//    with Specs2RouteTest
-//    with ZioSupport
-//    with OptionsSupport
-//    with TestContextSupport
-//    with FailFastCirceSupport {
-//
-//  def withApi[T](f: Api => ZIO[FinalEnvironment, Throwable, T]): ZIO[BaseEnvironment, Throwable, T] = {
-//    Main.stageFinal(defaultOptions) {
-//      for {
-//        interop <- createInteop[Main.FinalEnvironment]
-//        system <- actorSystem
-//        actor <- system.spawn(TestActor.create()(interop), "test-actor")
-//        api <- Main.createHttpApi(interop, actor)
-//        result <- f(api)
-//      } yield result
-//    }
-//  }
-//}
+package com.prezi.services.demo.api
+
+import akka.http.scaladsl.server.ExceptionHandler
+import akka.http.scaladsl.testkit.{RouteTest, TestFrameworkInterface}
+import izumi.reflect.Tag
+import zio.test.environment.TestEnvironment
+import zio.test.{RunnableSpec, Spec, TestFailure, TestSuccess, ZSpec}
+import zio.{Has, ZIO, ZLayer, ZManaged}
+
+trait ServiceSpecs[RIn >: TestEnvironment, SR <: Has[_], Api]
+  extends RunnableSpec[TestEnvironment, Any] {
+
+  import ServiceSpecs._
+
+  def createApi: ZIO[TestEnvironment with SR, TestFailure[Throwable], Api]
+  def routeTests: Api => RouteTests
+  def testEnv: ZLayer[RIn, TestFailure[Throwable], SR]
+  implicit def implicits: ServiceSpecsImplicits[RIn, SR]
+
+  trait RouteTests extends RouteTest with TestFrameworkInterface {
+    override def failTest(msg: String): Nothing =
+      throw AkkaHttpTestFailure(msg)
+
+    override def testExceptionHandler: ExceptionHandler = ExceptionHandler {
+      case e: AkkaHttpTestFailure => throw e
+    }
+
+    def spec: Vector[ZSpec[TestEnvironment with SR, Throwable]]
+  }
+
+  override val spec =
+    Spec.suite[TestEnvironment with SR, TestFailure[Throwable], TestSuccess](
+      "ZIO API",
+      ZManaged.fromEffect {
+        for {
+          api <- createApi
+          tests = routeTests(api)
+        } yield tests.spec
+      },
+      None).provideCustomLayer(testEnv)
+}
+
+object ServiceSpecs {
+  case class AkkaHttpTestFailure(message: String) extends RuntimeException
+
+  case class ServiceSpecsImplicits[RIn, SR](
+    tag: Tag[SR],
+    ev: TestEnvironment with SR <:< RIn with SR
+  )
+
+  implicit def implicitTag[RIn, SR](implicit i: ServiceSpecsImplicits[RIn, SR]): Tag[SR] = i.tag
+  implicit def implicitEv[RIn, SR](implicit i: ServiceSpecsImplicits[RIn, SR]): TestEnvironment with SR <:< RIn with SR = i.ev
+
+  def implicits[RIn, SR](implicit tag: Tag[SR], ev: TestEnvironment with SR <:< RIn with SR): ServiceSpecsImplicits[RIn, SR] =
+    ServiceSpecsImplicits[RIn, SR](tag, ev)
+}

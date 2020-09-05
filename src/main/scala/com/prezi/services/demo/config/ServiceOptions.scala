@@ -56,8 +56,8 @@ package object config {
     val any: ZLayer[ServiceSpecificOptions, Nothing, ServiceSpecificOptions] = ZLayer.requires[ServiceSpecificOptions]
 
     /** Loads service specific options by determining the environment from a system property */
-    def environmentDependentOptions: ZLayer[System, Throwable, ServiceSpecificOptions] =
-      ZLayer.fromEffect(
+    val environmentDependentOptions: ZLayer[System, Throwable, ServiceSpecificOptions] =
+      ZLayer.fromEffect {
         for {
           optEnvName <- system.property("environment")
           optEnv = optEnvName.flatMap(ServiceEnvironment.fromString)
@@ -70,10 +70,11 @@ package object config {
           baseConfig <- ZIO.effect(ConfigFactory.load())
           envSpecificConfig <- ZIO.effect(ConfigFactory.load(configName))
           finalConfig = baseConfig.withFallback(envSpecificConfig)
-        } yield new ConfiguredServiceOptions(finalConfig, env))
+        } yield new ConfiguredServiceOptions(finalConfig, env)
+      }
 
     /** Loads service specific options defined for test running */
-    def defaultTestOptions: ZLayer[Any, Throwable, ServiceSpecificOptions] =
+    val defaultTestOptions: ZLayer[Any, Throwable, ServiceSpecificOptions] =
       ZLayer.fromEffect(
         for {
           baseConfig <- ZIO.effect(ConfigFactory.load())
