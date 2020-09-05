@@ -4,6 +4,7 @@ import com.prezi.services.demo.core.Interop
 import com.prezi.services.demo.dependencies.catsDep.CatsDep
 import com.prezi.services.demo.dependencies.pureDep.PureDep
 import com.prezi.services.demo.model.Answer
+import com.prezi.services.demo.serviceconfig
 import zio.ZIO
 import zio.test.Assertion._
 import zio.test._
@@ -20,5 +21,5 @@ object CatsDepSpecs extends DefaultRunnableSpec {
           answer <- interop.ioToZio(catsSvc.provideAnswer(100))
         } yield assert(answer)(equalTo(Answer("100")))
       }
-    ).provideCustomLayer(PureDep.live >>> CatsDep.live)
+    ).provideCustomLayer(serviceconfig.test.mapError(TestFailure.fail) >>> PureDep.live >>> CatsDep.live)
 }

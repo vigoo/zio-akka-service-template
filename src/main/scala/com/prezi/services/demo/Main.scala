@@ -34,9 +34,10 @@ object Main extends App {
   type ServiceLayers = Logging with TypesafeZConfig[Configuration] with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
   type FinalEnvironment = ZEnv with ServiceLayers
 
-  def liveServiceEnvironment[RIn](options: ZLayer[RIn, Throwable, TypesafeZConfig[Configuration]]): ZLayer[RIn with Console with Logging, Throwable, ServiceLayers] = {
-    (options ++ PureDep.live ++ Console.any ++ ZLayer.requires[Logging]) >+>
+  def liveServiceEnvironment[RIn](options: ZLayer[RIn, Throwable, TypesafeZConfig[Configuration]]): ZLayer[RIn with Logging, Throwable, ServiceLayers] = {
+    (options ++ ZLayer.requires[Logging]) >+>
       AkkaContext.Default.live >+>
+      PureDep.live >+>
       (FutureDep.live ++ CatsDep.live ++ ZioDep.live)
   }
 

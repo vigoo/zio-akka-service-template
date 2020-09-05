@@ -21,8 +21,8 @@ object TestActorSpecs extends DefaultRunnableSpec with TestLogging {
   type TestEnv = ZioDep with PureDep with AkkaContext
 
   private val testServiceOptions = serviceconfig.test
-  private val testAkkaContext = (logging ++ testServiceOptions) >>> AkkaContext.Default.live
-  private val testEnv = (PureDep.live ++ testAkkaContext) >+> ZioDep.live
+  private val testAkkaContext = (logging ++ testServiceOptions) >+> AkkaContext.Default.live
+  private val testEnv = testAkkaContext >+> PureDep.live >+> ZioDep.live
 
   override val spec =
     suite("TestActor")(

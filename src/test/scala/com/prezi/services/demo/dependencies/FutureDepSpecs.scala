@@ -12,8 +12,8 @@ import zio.test.Assertion._
 
 object FutureDepSpecs extends DefaultRunnableSpec with TestLogging {
   private val testServiceOptions = serviceconfig.test
-  private val testAkkaContext = (logging ++ testServiceOptions) >>> AkkaContext.Default.live
-  private val testEnv = (PureDep.live ++ testAkkaContext) >>> FutureDep.live
+  private val testAkkaContext = (logging ++ testServiceOptions) >+> AkkaContext.Default.live
+  private val testEnv = testAkkaContext >+> PureDep.live >+> FutureDep.live
 
   override def spec =
     suite("FutureDep")(
