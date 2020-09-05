@@ -1,16 +1,16 @@
 package com.prezi.services.demo.core
 
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
-import akka.actor.typed.scaladsl.adapter._
 import akka.actor.typed.scaladsl.AskPattern._
+import akka.actor.typed.scaladsl.adapter._
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
 import akka.util.{ByteString, Timeout}
 import cats.effect.IO
 import com.prezi.services.demo.core.context.AkkaContext
-import zio.{Chunk, Runtime, ZIO, clock}
 import zio.clock.Clock
+import zio.{Chunk, Runtime, ZIO, clock}
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Success, Try}
+import scala.util.Try
 
 /** Interface for non-ZIO code segments to run ZIO or cats-effect values */
 trait Interop[+R] {

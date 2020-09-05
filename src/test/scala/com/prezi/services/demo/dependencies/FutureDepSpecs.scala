@@ -1,17 +1,17 @@
 package com.prezi.services.demo.dependencies
 
-import com.prezi.services.demo.config.{ServiceOptions, ServiceSpecificOptions}
 import com.prezi.services.demo.core.context.AkkaContext
 import com.prezi.services.demo.dependencies.futureDep.FutureDep
 import com.prezi.services.demo.dependencies.pureDep.PureDep
 import com.prezi.services.demo.model.Answer
+import com.prezi.services.demo.serviceconfig
 import zio.console.Console
 import zio.{ZIO, ZLayer}
 import zio.test._
 import zio.test.Assertion._
 
 object FutureDepSpecs extends DefaultRunnableSpec {
-  private val testServiceOptions = ServiceOptions.defaultTestOptions
+  private val testServiceOptions = serviceconfig.test
   private val testAkkaContext = (ZLayer.requires[Console] ++ testServiceOptions) >>> AkkaContext.Default.live
   private val testEnv = (PureDep.live ++ testAkkaContext) >>> FutureDep.live
 

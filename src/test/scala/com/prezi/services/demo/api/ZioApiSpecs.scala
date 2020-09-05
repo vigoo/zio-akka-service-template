@@ -1,18 +1,17 @@
 package com.prezi.services.demo.api
 
 import akka.http.scaladsl.model.StatusCodes
-import com.prezi.services.demo.Main
 import com.prezi.services.demo.actors.TestActor
-import com.prezi.services.demo.config._
 import com.prezi.services.demo.core.Interop
 import com.prezi.services.demo.core.Interop._
 import com.prezi.services.demo.core.context.AkkaContext.actorSystem
 import com.prezi.services.demo.model.Answer
+import com.prezi.services.demo.{Main, serviceconfig}
 import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport
+import zio._
 import zio.console.Console
 import zio.test.Assertion._
 import zio.test._
-import zio._
 
 object ZioApiSpecs extends DefaultRunnableSpec with ServiceSpecs[Console, Main.ServiceLayers, Api] {
   override def implicits = ServiceSpecs.implicits
@@ -40,6 +39,6 @@ object ZioApiSpecs extends DefaultRunnableSpec with ServiceSpecs[Console, Main.S
   }
 
   override def testEnv = Main
-    .liveServiceEnvironment(ServiceOptions.defaultTestOptions)
+    .liveServiceEnvironment(serviceconfig.test)
     .mapError(TestFailure.fail)
 }

@@ -3,8 +3,7 @@ package com.prezi.services.demo.core
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.adapter._
 import cats.instances.string._
-import com.prezi.services.demo.config.ServiceOptions._
-import com.prezi.services.demo.config.ServiceSpecificOptions
+import com.prezi.services.demo.serviceconfig.{TypesafeConfig, typesafeConfig}
 import zio.console.Console
 import zio.interop.catz.console
 import zio.{Has, ZIO, ZLayer, ZManaged}
@@ -22,11 +21,11 @@ package object context {
     }
 
     object Default {
-      private val create: ZIO[ServiceSpecificOptions, Nothing, AkkaContext.Service] =
+      private val create: ZIO[TypesafeConfig, Nothing, AkkaContext.Service] =
         for {
-          opts <- options
+          config <- typesafeConfig
         } yield new Service {
-          override val actorSystem: ActorSystem[_] = akka.actor.ActorSystem("service", opts.config).toTyped
+          override val actorSystem: ActorSystem[_] = akka.actor.ActorSystem("service", config).toTyped
         }
 
       private def terminate(context: AkkaContext.Service): ZIO[Console, Nothing, Any] = {
@@ -42,7 +41,7 @@ package object context {
       private def logFatalError(reason: Throwable): ZIO[Console, Nothing, Unit] =
         console.putStrLn(s"Fatal init/shutdown error: ${reason.getMessage}") // TODO: use logging system instead
 
-      val live: ZLayer[Console with ServiceSpecificOptions, Throwable, AkkaContext] =
+      val live: ZLayer[Console with TypesafeConfig, Throwable, AkkaContext] =
         ZLayer.fromManaged(ZManaged.make(create)(terminate))
 
       val any: ZLayer[AkkaContext, Nothing, AkkaContext] = ZLayer.requires[AkkaContext]

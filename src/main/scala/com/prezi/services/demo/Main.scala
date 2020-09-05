@@ -4,21 +4,21 @@ import akka.actor.typed
 import akka.actor.typed.ActorRef
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
-import cats.instances.string._
 import com.prezi.services.demo.actors.TestActor
 import com.prezi.services.demo.api.Api
-import com.prezi.services.demo.config.ServiceOptions.options
-import com.prezi.services.demo.config.{ServiceOptions, ServiceSpecificOptions}
-import com.prezi.services.demo.core.context.AkkaContext._
-import com.prezi.services.demo.core.Interop._
+import com.prezi.services.demo.serviceconfig
 import com.prezi.services.demo.core.Interop
+import com.prezi.services.demo.core.Interop._
 import com.prezi.services.demo.core.context.AkkaContext
+import com.prezi.services.demo.core.context.AkkaContext._
 import com.prezi.services.demo.dependencies.catsDep.CatsDep
 import com.prezi.services.demo.dependencies.futureDep.FutureDep
 import com.prezi.services.demo.dependencies.pureDep.PureDep
 import com.prezi.services.demo.dependencies.zioDep.ZioDep
 import com.prezi.services.demo.model.Answer
+import com.prezi.services.demo.serviceconfig.{Configuration, TypesafeZConfig, serviceConfig}
 import zio._
+import zio.config.{ZConfig, config}
 import zio.console.Console
 import zio.random.Random
 import zio.system.System
@@ -29,10 +29,10 @@ import scala.util.Try
 object Main extends App {
   private val terminateDeadline: FiniteDuration = 10.seconds
 
-  type ServiceLayers = ServiceSpecificOptions with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
+  type ServiceLayers = TypesafeZConfig[Configuration] with AkkaContext with PureDep with CatsDep with ZioDep with FutureDep
   type FinalEnvironment = ZEnv with ServiceLayers
 
-  def liveServiceEnvironment[RIn <: Has[_]](options: ZLayer[RIn, Throwable, ServiceSpecificOptions]): ZLayer[RIn with Console, Throwable, ServiceLayers] = {
+  def liveServiceEnvironment[RIn <: Has[_]](options: ZLayer[RIn, Throwable, TypesafeZConfig[Configuration]]): ZLayer[RIn with Console, Throwable, ServiceLayers] = {
     (options ++ PureDep.live ++ Console.any) >+>
       AkkaContext.Default.live >+>
       (FutureDep.live ++ CatsDep.live ++ ZioDep.live)
@@ -42,7 +42,7 @@ object Main extends App {
   override def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] = {
     for {
       _ <- console.putStrLn("Starting up...")
-      _ <- inServiceEnvironment(ServiceOptions.environmentDependentOptions) {
+      _ <- inServiceEnvironment(serviceconfig.live) {
         for {
           interop <- createInterop()
           actor <- createActor(interop)
@@ -60,7 +60,7 @@ object Main extends App {
     } yield ExitCode.success
   }
 
-  def inServiceEnvironment[A](options: ZLayer[System, Throwable, ServiceSpecificOptions])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
+  def inServiceEnvironment[A](options: ZLayer[System, Throwable, TypesafeZConfig[Configuration]])(f: ZIO[FinalEnvironment, Throwable, A]): ZIO[ZEnv, Throwable, A] = {
     f.provideCustomLayer(liveServiceEnvironment(options))
   }
 
@@ -85,14 +85,14 @@ object Main extends App {
   private def startHttpApi(api: Api): ZIO[FinalEnvironment, Nothing, ZManaged[Console, Throwable, ServerBinding]] = {
     for {
       system <- classicActorSystem
-      opt <- options
+      opt <- config[Configuration]
       create = {
         implicit val sys = system
         for {
           _ <- console.putStrLn("Starting HTTP server")
           result <- ZIO.fromFuture { implicit ec =>
             Http()
-              .newServerAt("0.0.0.0", port = opt.port)
+              .newServerAt("0.0.0.0", port = opt.http.port)
               .bindFlow(api.route)
           }
         } yield result
